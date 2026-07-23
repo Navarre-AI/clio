@@ -1,0 +1,15 @@
+{
+  "name": "clio",
+  "version": "0.1.0",
+  "description": "Inviolate logs that live outside FileMaker. Append-only, hash-chained, tamper-evident.",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "setup": "node setup.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
