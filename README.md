@@ -88,8 +88,26 @@ The ingest contract matches the navarre-sidecars chassis shipper exactly:
 point any sidecar's `CLIO_URL` + `CLIO_API_KEY` here and its audit events flow
 in unchanged.
 
+## Many databases, many servers
+
+One Clio serves any number of FileMaker files on any number of servers.
+Each database is a "system": its own API key, its own independent chain,
+its own anchor schedule. The systems registry (admin section of the UI, or
+`POST /v1/admin/systems`) records which server and file each chain belongs
+to; minting a key registers its system in the same call. Clio never
+connects to FileMaker; every file pushes to Clio, so a new server is just a
+new key.
+
 ## FileMaker side
 
-Two scripts and two small tables, fully specified in `filemaker/`:
-`Clio Log.md` (the one logging script) and `Clio Daily Anchor.md` (the daily
-anchor + verify + scan schedule). Server setup notes: `SETUP.md`.
+Three scripts, fully specified in `filemaker/`:
+
+- `Clio Log.md`: the one fire-and-forget logging script for event-shaped
+  history (logins, exports, failures).
+- `Clio Window Transactions.md`: the OnWindowTransaction file trigger that
+  turns every committed record change into chain entries automatically,
+  with per-table payloads from an unstored calc field.
+- `Clio Daily Anchor.md`: the daily anchor + verify + scan schedule.
+
+Server setup notes: `SETUP.md`. Security model and its honest limits:
+`SECURITY.md`.

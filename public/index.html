@@ -87,6 +87,24 @@
     <button id="logRefresh">Refresh</button>
   </div>
   <div id="logs" class="scroll"><div class="quiet">Pick a system.</div></div>
+
+  <h2>Systems &amp; keys (admin)</h2>
+  <div id="adminLocked" class="controls">
+    <input type="text" id="adminToken" placeholder="admin token">
+    <button id="adminUnlock">Unlock</button>
+  </div>
+  <div id="adminPanel" style="display:none">
+    <div id="adminSystems" class="scroll"></div>
+    <h2 style="margin-top:18px">Register a system / mint a key</h2>
+    <div class="controls">
+      <input type="text" id="regId" placeholder="system id (e.g. crm)" style="width:140px">
+      <input type="text" id="regLabel" placeholder="label" style="width:150px">
+      <input type="text" id="regServer" placeholder="FM server (fm.acme.com)" style="width:190px">
+      <input type="text" id="regFile" placeholder="file (CRM.fmp12)" style="width:150px">
+      <button class="primary" id="regMint">Register + mint key</button>
+    </div>
+    <div id="mintResult"></div>
+  </div>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -108,6 +126,7 @@ async function loadOverview() {
       <div class="sys">${esc(s.system_id)}
         ${s.open_warnings ? `<span class="badge b-warn">${s.open_warnings} open</span>` : ""}
         <span class="badge verify-badge b-info">unverified</span></div>
+      ${s.fm_server || s.fm_file ? `<div class="meta">${esc(s.fm_file || "?")} on ${esc(s.fm_server || "?")}</div>` : ""}
       <div class="hash">head #${s.seq} · ${esc(s.entry_hash || "")}</div>
       <div class="meta">${s.entry_count} entries · last ${esc((s.last_ts_server || "").replace("T", " ").slice(0, 19))}</div>
       <div style="margin-top:8px"><button onclick="verify('${esc(s.system_id)}', this)">Verify chain</button></div>
@@ -188,7 +207,51 @@ async function ask() {
 $("askBtn").onclick = ask;
 $("askInput").onkeydown = (e) => { if (e.key === "Enter") ask(); };
 
-loadOverview(); loadWarnings();
+// ---- admin: systems registry + key minting ----------------------------------
+const adminToken = () => sessionStorage.getItem("clio_admin") || "";
+const adminHeaders = () => ({ Authorization: "Bearer " + adminToken(), "Content-Type": "application/json" });
+
+async function loadAdmin() {
+  if (!adminToken()) return;
+  const r = await fetch("/v1/admin/systems", { headers: adminHeaders() });
+  if (!r.ok) { sessionStorage.removeItem("clio_admin"); return; }
+  const { data } = await r.json();
+  $("adminLocked").style.display = "none";
+  $("adminPanel").style.display = "block";
+  $("adminSystems").innerHTML = `
+    <table><tr><th>system</th><th>label</th><th>FM server</th><th>file</th><th>keys</th><th>head</th></tr>
+    ${data.systems.map((s) => `<tr>
+      <td>${esc(s.system_id)}</td><td>${esc(s.label || "")}</td>
+      <td>${esc(s.fm_server || "")}</td><td>${esc(s.fm_file || "")}</td>
+      <td>${s.active_keys}</td><td>#${s.seq}</td></tr>`).join("")}
+    </table>`;
+}
+
+$("adminUnlock").onclick = async () => {
+  sessionStorage.setItem("clio_admin", $("adminToken").value.trim());
+  await loadAdmin();
+  if (!$("adminPanel").style.display || $("adminPanel").style.display === "none") {
+    alert("That token was not accepted.");
+  }
+};
+
+$("regMint").onclick = async () => {
+  const body = {
+    system_id: $("regId").value.trim(), label: $("regLabel").value.trim() || null,
+    fm_server: $("regServer").value.trim() || null, fm_file: $("regFile").value.trim() || null,
+  };
+  if (!body.system_id) return alert("system id is required");
+  const r = await fetch("/v1/admin/keys", { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) });
+  const j2 = await r.json();
+  if (!j2.ok) return alert(j2.error?.message || "mint failed");
+  $("mintResult").innerHTML = `
+    <div class="warning"><span class="badge b-ok">key</span>
+      <div class="body"><div class="title">Copy it now; it is shown exactly once.</div>
+      <div class="hash">${esc(j2.data.key)}</div></div></div>`;
+  loadAdmin(); loadOverview();
+};
+
+loadOverview(); loadWarnings(); loadAdmin();
 setInterval(() => { loadOverview(); loadWarnings(); }, 60000);
 </script>
 </body>

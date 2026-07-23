@@ -262,12 +262,58 @@ app.post("/v1/scan", keyOrAdmin, async (req, res) => {
   }
 });
 
+// ---- systems registry -------------------------------------------------------
+// One row per logged system (chain): usually one file on one FM Server.
+// Minting a key auto-registers its system, so the registry is optional
+// bookkeeping, never a gate.
+
+function upsertSystem(systemId, { label, fm_server, fm_file, notes } = {}) {
+  db.prepare(
+    `INSERT INTO systems (system_id, label, fm_server, fm_file, notes) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(system_id) DO UPDATE SET
+       label = COALESCE(excluded.label, label),
+       fm_server = COALESCE(excluded.fm_server, fm_server),
+       fm_file = COALESCE(excluded.fm_file, fm_file),
+       notes = COALESCE(excluded.notes, notes)`
+  ).run(systemId, label ?? null, fm_server ?? null, fm_file ?? null, notes ?? null);
+}
+
+function systemsIndex() {
+  return Object.fromEntries(db.prepare("SELECT * FROM systems").all().map((s) => [s.system_id, s]));
+}
+
+app.post("/v1/admin/systems", adminAuth, (req, res) => {
+  const systemId = String(req.body?.system_id || "").trim();
+  if (!systemId) return fail(res, 400, "bad_request", "system_id is required.");
+  upsertSystem(systemId, req.body);
+  selfLog("admin.system_registered", { system_id: systemId, fm_server: req.body?.fm_server, fm_file: req.body?.fm_file });
+  res.json(ok(db.prepare("SELECT * FROM systems WHERE system_id = ?").get(systemId)));
+});
+
+app.get("/v1/admin/systems", adminAuth, (_req, res) => {
+  const reg = systemsIndex();
+  const chains = db.prepare("SELECT DISTINCT system_id FROM log_entries").all().map((r) => r.system_id);
+  const keyCounts = Object.fromEntries(
+    db.prepare("SELECT system_id, COUNT(*) AS n FROM api_keys WHERE revoked_at IS NULL GROUP BY system_id")
+      .all().map((r) => [r.system_id, r.n])
+  );
+  const ids = [...new Set([...Object.keys(reg), ...chains])].sort();
+  res.json(ok({
+    systems: ids.map((sid) => ({
+      ...(reg[sid] || { system_id: sid }),
+      active_keys: keyCounts[sid] || 0,
+      ...head(db, sid),
+    })),
+  }));
+});
+
 // ---- admin keys (chassis-verbatim semantics) --------------------------------
 
 app.post("/v1/admin/keys", adminAuth, (req, res) => {
   const systemId = String(req.body?.system_id || "").trim();
   if (!systemId) return fail(res, 400, "bad_request", "system_id is required.");
   const label = req.body?.label ? String(req.body.label) : null;
+  upsertSystem(systemId, req.body); // registering rides along with minting
   const key = generateApiKey();
   const id = randomUUID();
   db.prepare("INSERT INTO api_keys (id, system_id, label, key_hash) VALUES (?, ?, ?, ?)")
@@ -295,16 +341,23 @@ app.delete("/v1/admin/keys/:id", adminAuth, (req, res) => {
 // ---- UI surface (behind the gate) ------------------------------------------
 
 app.get("/api/overview", (_req, res) => {
-  const systems = db.prepare("SELECT DISTINCT system_id FROM log_entries").all().map((r) => r.system_id);
+  const reg = systemsIndex();
+  const chains = db.prepare("SELECT DISTINCT system_id FROM log_entries").all().map((r) => r.system_id);
+  const ids = [...new Set([...Object.keys(reg), ...chains])];
   const openCounts = Object.fromEntries(
     db.prepare("SELECT system_id, COUNT(*) AS n FROM warnings WHERE status = 'open' GROUP BY system_id")
       .all().map((r) => [r.system_id, r.n])
   );
-  res.json({
-    systems: systems.map((sid) => ({ ...head(db, sid), open_warnings: openCounts[sid] || 0 })),
-    ai: aiAvailable(),
-    version: VERSION,
-  });
+  const systems = ids.map((sid) => ({
+    ...head(db, sid),
+    open_warnings: openCounts[sid] || 0,
+    label: reg[sid]?.label || null,
+    fm_server: reg[sid]?.fm_server || null,
+    fm_file: reg[sid]?.fm_file || null,
+  }));
+  // Group by server in the UI: sort by server, then system id.
+  systems.sort((a, b) => (a.fm_server || "~").localeCompare(b.fm_server || "~") || a.system_id.localeCompare(b.system_id));
+  res.json({ systems, ai: aiAvailable(), version: VERSION });
 });
 
 app.get("/api/logs", (req, res) => {
