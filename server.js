@@ -248,9 +248,36 @@ app.post("/v1/warnings/:id/ack", adminAuth, (req, res) => {
   res.json(ok({ acknowledged: req.params.id }));
 });
 
+// Alerting: if ALERT_WEBHOOK is set, warn/critical findings from each scan
+// are POSTed there as JSON, fire-and-forget. Works with a Slack incoming
+// webhook, the Comm bus, or anything that accepts JSON. Email stays the
+// anchor script's job (FMS schedule notifications).
+async function pushAlerts(scanId) {
+  const hook = process.env.ALERT_WEBHOOK;
+  if (!hook || !scanId) return;
+  const alerts = db.prepare(
+    "SELECT system_id, severity, title, detail FROM warnings WHERE scan_id = ? AND severity IN ('warn','critical')"
+  ).all(scanId);
+  if (!alerts.length) return;
+  const text = alerts.map((a) => `[${a.severity}] ${a.system_id}: ${a.title}. ${a.detail}`).join("\n");
+  try {
+    await fetch(hook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "clio", text, alerts }),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) {
+    console.log(JSON.stringify({ level: "warn", msg: "alert webhook failed", error: String(e.message || e) }));
+  }
+}
+
 async function doScan(force) {
   const result = await runScan(db, { force, aiFindings: aiAvailable() ? aiFindings : null });
-  if (!result.skipped) selfLog("scan.run", { scan_id: result.scan_id, findings: result.findings });
+  if (!result.skipped) {
+    selfLog("scan.run", { scan_id: result.scan_id, findings: result.findings });
+    pushAlerts(result.scan_id); // deliberately not awaited
+  }
   return result;
 }
 

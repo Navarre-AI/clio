@@ -7,11 +7,28 @@ import { randomUUID } from "node:crypto";
 
 const DAY = 24 * 60 * 60 * 1000;
 
+// Watchdog config, all optional. This is usage auditing for the database
+// admin (who did what, when), not performance tuning.
+//   CLIO_TZ_OFFSET   hours from UTC for "local" business time, e.g. 3 or -7
+//   BUSINESS_HOURS   local hours considered on-hours, "07-19"
+//   BUSINESS_DAYS    "1-5" = Monday-Friday (0=Sunday, 6=Saturday)
+//   EXPORT_ROWS_THRESHOLD  payload {"rows": N} at or above this is a big export
+function watchdogConfig() {
+  const [h1, h2] = (process.env.BUSINESS_HOURS || "07-19").split("-").map(Number);
+  const [d1, d2] = (process.env.BUSINESS_DAYS || "1-5").split("-").map(Number);
+  return {
+    tzModifier: `${Number(process.env.CLIO_TZ_OFFSET || 0)} hours`,
+    hourStart: h1, hourEnd: h2, dayStart: d1, dayEnd: d2,
+    exportRows: Number(process.env.EXPORT_ROWS_THRESHOLD || 1000),
+  };
+}
+
 // Aggregates for one system. Baseline: the 14 days before the last 24 hours.
 export function aggregatesForSystem(db, systemId, now = Date.now()) {
   const dayAgo = iso(now - DAY);
   const baseStart = iso(now - 15 * DAY);
   const out = [];
+  const cfg = watchdogConfig();
 
   // Volume per action: last 24h vs baseline daily mean.
   const rows = db.prepare(
@@ -24,9 +41,13 @@ export function aggregatesForSystem(db, systemId, now = Date.now()) {
   for (const r of rows) {
     const baseMean = r.base / 14;
     const errorShaped = /error|fail|denied|invalid|tamper/i.test(r.action);
+    const deleteShaped = /\.deleted?$/i.test(r.action);
     if (r.base === 0 && r.last24 > 0) {
       out.push({ kind: "new_action", system_id: systemId, action: r.action,
         last24: r.last24, note: "action never seen in the prior 14 days" });
+    } else if (deleteShaped && r.last24 >= 10 && r.last24 > 3 * baseMean) {
+      out.push({ kind: "delete_spike", system_id: systemId, action: r.action,
+        last24: r.last24, baseline_daily_mean: round2(baseMean) });
     } else if (r.last24 >= 10 && baseMean > 0 && r.last24 > 3 * baseMean) {
       out.push({ kind: errorShaped ? "error_spike" : "volume_spike", system_id: systemId,
         action: r.action, last24: r.last24, baseline_daily_mean: round2(baseMean) });
@@ -37,6 +58,46 @@ export function aggregatesForSystem(db, systemId, now = Date.now()) {
       out.push({ kind: "action_silent", system_id: systemId, action: r.action,
         last24: 0, baseline_daily_mean: round2(baseMean) });
     }
+  }
+
+  // Off-hours activity: events outside the business window (local time via
+  // CLIO_TZ_OFFSET), last 24h vs the baseline's daily off-hours mean.
+  const offCond = `(
+      CAST(strftime('%H', datetime(ts_server, ?)) AS INTEGER) NOT BETWEEN ? AND ?
+      OR CAST(strftime('%w', datetime(ts_server, ?)) AS INTEGER) NOT BETWEEN ? AND ?
+    )`;
+  const offArgs = [cfg.tzModifier, cfg.hourStart, cfg.hourEnd - 1, cfg.tzModifier, cfg.dayStart, cfg.dayEnd];
+  const off = db.prepare(
+    `SELECT SUM(CASE WHEN ts_server >= ? THEN 1 ELSE 0 END) AS last24,
+            SUM(CASE WHEN ts_server >= ? AND ts_server < ? THEN 1 ELSE 0 END) AS base
+     FROM log_entries WHERE system_id = ? AND ${offCond}`
+  ).get(dayAgo, baseStart, dayAgo, systemId, ...offArgs);
+  const offBaseMean = (off.base || 0) / 14;
+  if ((off.last24 || 0) >= 5 && off.last24 > 3 * Math.max(offBaseMean, 1)) {
+    const top = db.prepare(
+      `SELECT action, COUNT(*) AS n FROM log_entries
+       WHERE system_id = ? AND ts_server >= ? AND ${offCond}
+       GROUP BY action ORDER BY n DESC LIMIT 5`
+    ).all(systemId, dayAgo, ...offArgs);
+    out.push({ kind: "off_hours", system_id: systemId, last24: off.last24,
+      baseline_daily_mean: round2(offBaseMean),
+      window: `outside ${cfg.hourStart}:00-${cfg.hourEnd}:00 local or weekend`,
+      top_actions: top.map((t) => `${t.action} (${t.n})`) });
+  }
+
+  // Big exports: any event whose payload reports {"rows": N} at or over the
+  // threshold and whose action looks export/print/save-shaped.
+  const exports_ = db.prepare(
+    `SELECT action, ts_server, CAST(json_extract(payload_json, '$.rows') AS INTEGER) AS rows
+     FROM log_entries
+     WHERE system_id = ? AND ts_server >= ?
+       AND (action LIKE '%export%' OR action LIKE '%print%' OR action LIKE '%save%' OR action LIKE '%pdf%')
+       AND CAST(json_extract(payload_json, '$.rows') AS INTEGER) >= ?
+     ORDER BY rows DESC LIMIT 10`
+  ).all(systemId, dayAgo, cfg.exportRows);
+  for (const e of exports_) {
+    out.push({ kind: "big_export", system_id: systemId, action: e.action,
+      rows: e.rows, at: e.ts_server, threshold: cfg.exportRows });
   }
 
   // Whole system gone silent: steady baseline, nothing in 36 hours.
@@ -55,8 +116,8 @@ export function aggregatesForSystem(db, systemId, now = Date.now()) {
 // Threshold fallback: no model, just the aggregates mapped to severities.
 export function warningsFromAggregates(aggregates) {
   return aggregates.map((a) => {
-    const sev = a.kind === "error_spike" || a.kind === "system_silent" ? "warn"
-      : a.kind === "action_silent" ? "warn" : "info";
+    const sev = ["error_spike", "system_silent", "action_silent", "off_hours", "big_export", "delete_spike"]
+      .includes(a.kind) ? "warn" : "info";
     return {
       system_id: a.system_id, severity: sev,
       title: titleFor(a),
@@ -71,8 +132,11 @@ function titleFor(a) {
     new_action: `New event type: ${a.action}`,
     error_spike: `Spike in ${a.action}`,
     volume_spike: `Unusual volume for ${a.action}`,
+    delete_spike: `Deletion spike: ${a.action}`,
     action_silent: `${a.action} went quiet`,
     system_silent: `System has gone silent`,
+    off_hours: `Off-hours activity`,
+    big_export: `Large export: ${a.action}`,
   };
   return names[a.kind] || a.kind;
 }
@@ -86,8 +150,14 @@ function detailFor(a) {
       return `${a.last24} "${a.action}" events in the last 24 hours vs a daily average of ${a.baseline_daily_mean}.`;
     case "action_silent":
       return `No "${a.action}" events in the last 24 hours vs a daily average of ${a.baseline_daily_mean}.`;
+    case "delete_spike":
+      return `${a.last24} "${a.action}" deletions in the last 24 hours vs a daily average of ${a.baseline_daily_mean}.`;
     case "system_silent":
       return `No events since ${a.last_entry}, after ${a.baseline_count_15d} events in the prior 15 days.`;
+    case "off_hours":
+      return `${a.last24} events ${a.window} in the last 24 hours vs a daily average of ${a.baseline_daily_mean}. Top: ${(a.top_actions || []).join(", ")}.`;
+    case "big_export":
+      return `"${a.action}" reported ${a.rows} rows at ${a.at} (threshold ${a.threshold}).`;
     default:
       return JSON.stringify(a);
   }

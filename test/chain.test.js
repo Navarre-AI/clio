@@ -137,3 +137,49 @@ test("tamper after the anchor: anchor still matches, chain reports the break", (
   assert.equal(v.first_bad_seq, 8);
   assert.equal(v.anchor_match, true); // history through the anchor is still intact
 });
+
+// ---- watchdog detectors -----------------------------------------------------
+import { aggregatesForSystem } from "../scan.js";
+
+function rawInsert(db, sys, seq, tsServer, action, payload = "") {
+  db.prepare(`INSERT INTO log_entries
+    (system_id, seq, event_id, ts_client, ts_server, category, action, payload_json, prev_hash, entry_hash)
+    VALUES (?, ?, ?, ?, ?, '', ?, ?, 'x', 'x')`)
+    .run(sys, seq, `raw-${sys}-${seq}`, tsServer, tsServer, action, payload);
+}
+
+test("watchdog: weekend burst and big export are detected", () => {
+  const db = tempDb();
+  const now = Date.parse("2026-07-20T12:00:00Z"); // a Monday
+  let seq = 0;
+  // Baseline: quiet weekday business-hours activity (10:00 UTC), no off-hours history
+  for (let d = 14; d >= 2; d--) {
+    const day = new Date(now - d * 86400000).toISOString().slice(0, 10);
+    rawInsert(db, "s", ++seq, `${day}T10:00:00.000Z`, "crm.order.created");
+  }
+  // Sunday evening burst (inside last 24h, weekend => off-hours)
+  for (let i = 0; i < 6; i++) {
+    rawInsert(db, "s", ++seq, `2026-07-19T20:0${i}:00.000Z`, "crm.order.modified");
+  }
+  // A big export
+  rawInsert(db, "s", ++seq, "2026-07-20T09:00:00.000Z", "crm.contacts.export", JSON.stringify({ rows: 5000 }));
+
+  const kinds = aggregatesForSystem(db, "s", now).map((a) => a.kind);
+  assert.ok(kinds.includes("off_hours"), `expected off_hours in ${kinds}`);
+  assert.ok(kinds.includes("big_export"), `expected big_export in ${kinds}`);
+});
+
+test("watchdog: delete spike is its own kind", () => {
+  const db = tempDb();
+  const now = Date.parse("2026-07-22T12:00:00Z");
+  let seq = 0;
+  for (let d = 14; d >= 2; d--) {
+    const day = new Date(now - d * 86400000).toISOString().slice(0, 10);
+    rawInsert(db, "s", ++seq, `${day}T10:00:00.000Z`, "crm.Invoice.deleted");
+  }
+  for (let i = 0; i < 15; i++) {
+    rawInsert(db, "s", ++seq, "2026-07-22T10:00:01.000Z", "crm.Invoice.deleted");
+  }
+  const aggs = aggregatesForSystem(db, "s", now);
+  assert.ok(aggs.some((a) => a.kind === "delete_spike"), JSON.stringify(aggs));
+});
