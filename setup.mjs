@@ -99,12 +99,14 @@ try {
   key = body?.data?.key || null;
 } catch {}
 
+const logUrl = key ? `${url}/v1/log/${key}` : `${url}/v1/log/<your-key>`;
 console.log("\n--------------------------------------------------------------");
-console.log("Clio is live. Values for the FileMaker side (see filemaker/):");
-console.log(`  ClioSettings::ClioURL     ${url}`);
-console.log(`  ClioSettings::ClioAPIKey  ${key || "(minting failed; mint manually, see README)"}`);
-if (sitePassword) console.log(`  Web UI                    ${url}/?key=${sitePassword}`);
-console.log(`  Admin token               ${adminToken}   (store it; shown only here)`);
+console.log("Clio is live. The FileMaker side is ONE script (see filemaker/Clio.md).");
+console.log("Put this URL in its single Insert from URL step:");
+console.log(`\n  ${logUrl}\n`);
+console.log("Then set that script as the file's OnWindowTransaction trigger.");
+if (sitePassword) console.log(`\n  Web UI        ${url}/?key=${sitePassword}`);
+console.log(`  Admin token   ${adminToken}   (store it; shown only here)`);
 console.log("--------------------------------------------------------------");
-console.log("The API key above is shown exactly once. Put it in ClioSettings now.");
+console.log("The key is embedded in the URL above and shown exactly once.");
 rl.close();

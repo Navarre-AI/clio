@@ -1,575 +1,613 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Clio</title>
 <style>
-  /* Same warm-minimal family as Pythia: paper neutrals, terracotta accent,
-     gold reserved for the brand and the pulse. Dark = warm charcoal. */
-  :root { --bg:#faf9f5; --panel:#ffffff; --panel2:#f1eee7; --line:#e8e4da; --ink:#211f1a;
-    --muted:#6f6a5f; --dim:#a39d8f; --accent:#c15f3c; --accent2:#d97757; --gold:#b8923e;
-    --side:#f5f3ec; --good:#2e7d52; --goodbg:#e7f2ec; --warnc:#a05a1a; --warnbg:#f7ead9;
-    --critc:#a32c2c; --critbg:#f7e2e2; --offbg:#f1eee7;
-    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif; }
-  html.dark { --bg:#1b1915; --panel:#242119; --panel2:#2f2b20; --line:#3c3628; --ink:#ece8df;
-    --muted:#a9a292; --dim:#7c7565; --accent:#d97757; --accent2:#e08b6d; --gold:#c9a24b;
-    --side:#211e17; --good:#7dbd9a; --goodbg:#22352a; --warnc:#e0a366; --warnbg:#3a2e1d;
-    --critc:#e08a8a; --critbg:#3a2222; --offbg:#2b2720; }
-  * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:var(--dim) transparent; }
+  /* Clio wears Pythia's warm-minimal skin: paper neutrals, terracotta accent,
+     gold for the brand mark only. Dark = warm charcoal, not blue-black. */
+  :root { --bg:#faf9f5; --panel:#ffffff; --panel2:#f1eee7; --line:#e8e4da; --ink:#211f1a; --muted:#6f6a5f; --accent:#c15f3c; --accent2:#d97757; --good:#2e7d5b; --bad:#c04f4f; --shadow:0 1px 2px rgba(60,50,30,.05),0 3px 12px rgba(60,50,30,.06);
+    --side:#f5f3ec; --dim:#a39d8f; --track:#ece8de; --goodbg:#e7f2ec; --offbg:#f1eee7; --warnbg:#f7ead9; --warnc:#a05a1a; --critbg:#f7e2e2; --critc:#a32c2c;
+    --gold:#b8923e; --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif; }
+  html.dark { --bg:#1b1915; --panel:#242119; --panel2:#2f2b20; --line:#3c3628; --ink:#ece8df; --muted:#a9a292; --accent:#d97757; --accent2:#e08b6d; --good:#4cbd8b; --bad:#e0707a; --shadow:0 1px 2px rgba(0,0,0,.28),0 3px 14px rgba(0,0,0,.26);
+    --side:#211e17; --dim:#7c7565; --track:#2f2b20; --goodbg:#22352a; --offbg:#2b2720; --warnbg:#3a2e1d; --warnc:#e0a366; --critbg:#3a2222; --critc:#e08a8a;
+    --gold:#c9a24b; }
+  * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:var(--track) transparent; }
+  ::-webkit-scrollbar { width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb { background:var(--track); border-radius:6px; border:2px solid transparent; background-clip:content-box; }
+  ::-webkit-scrollbar-thumb:hover { background:var(--dim); background-clip:content-box; }
   html, body { margin:0; height:100%; }
-  body { display:flex; height:100vh; background:var(--bg); color:var(--ink);
+  body { display:flex; height:100vh; overflow:hidden; background:var(--bg); color:var(--ink);
     font:14.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   button { font:inherit; cursor:pointer; border:0; background:none; color:inherit; }
+  input, select, textarea { font:inherit; }
 
-  .side { width:230px; flex:none; background:linear-gradient(180deg,var(--side) 55%,var(--bg));
-    border-right:1px solid var(--line); display:flex; flex-direction:column; }
-  .side-top { padding:16px 15px 12px; }
-  .brand { font-family:var(--serif); font-size:20px; font-weight:600; letter-spacing:.03em;
-    display:flex; align-items:center; gap:9px; }
+  /* Sidebar */
+  .side { width:236px; flex:none; background:linear-gradient(180deg,var(--side) 55%,var(--bg)); border-right:1px solid var(--line); display:flex; flex-direction:column; }
+  .side-top { padding:16px 15px 12px; display:flex; align-items:center; gap:9px; }
+  .brand { font-family:var(--serif); font-size:20px; font-weight:600; letter-spacing:.03em; display:flex; align-items:center; gap:9px; }
   .brand svg { width:24px; height:24px; flex:none; }
-  .side-list { flex:1; overflow-y:auto; padding:6px 8px; }
-  .navitem { display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:9px;
-    color:var(--muted); cursor:pointer; font-size:13.5px; }
+  .side-list { flex:1; overflow-y:auto; padding:8px; }
+  .navitem { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:9px; color:var(--muted); cursor:pointer; font-size:14px; margin-bottom:2px; }
   .navitem:hover { background:var(--panel); color:var(--ink); }
-  .navitem.on { background:var(--panel2); color:var(--ink); box-shadow:inset 3px 0 0 var(--gold); font-weight:500; }
-  .navitem .cnt { margin-left:auto; font-size:11.5px; background:var(--warnbg); color:var(--warnc);
-    border-radius:12px; padding:0 8px; }
-  .side-foot { padding:10px 12px 14px; border-top:1px solid var(--line); color:var(--dim); font-size:12px; }
-  .side-foot .frow { display:flex; align-items:center; gap:8px; padding:4px 0; }
-  .side-foot button { color:var(--muted); padding:2px 4px; border-radius:6px; }
-  .side-foot button:hover { color:var(--ink); background:var(--panel); }
+  .navitem.on { background:var(--panel2); color:var(--ink); box-shadow:inset 3px 0 0 var(--accent2); font-weight:600; }
+  .navitem .ico { width:18px; text-align:center; font-size:15px; flex:none; }
+  .navitem .cnt { margin-left:auto; font-size:11.5px; background:var(--warnbg); color:var(--warnc); border-radius:12px; padding:0 8px; font-weight:600; }
+  .side-foot { padding:10px 12px 14px; border-top:1px solid var(--line); }
+  .footrow { display:flex; align-items:center; gap:8px; }
+  .footbtn { color:var(--muted); font-size:13px; padding:6px 8px; border-radius:8px; display:flex; align-items:center; gap:7px; }
+  .footbtn:hover { background:var(--panel); color:var(--ink); }
+  .footinfo { color:var(--dim); font-size:11.5px; margin-top:6px; padding:0 8px; }
 
+  /* Main */
   .main { flex:1; display:flex; flex-direction:column; min-width:0; }
-  .view { flex:1; overflow-y:auto; padding:22px 28px 40px; display:none; }
-  .view.on { display:block; }
-  .vhead { display:flex; align-items:baseline; gap:12px; margin:0 0 14px; }
-  .vhead h1 { font-family:var(--serif); font-size:21px; font-weight:600; margin:0; }
-  .vhead .sub { color:var(--muted); font-size:13px; }
-  .vhead .right { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .main-head { display:flex; align-items:center; gap:12px; padding:16px 26px 12px; border-bottom:1px solid var(--line); }
+  .main-head .title { font-family:var(--serif); font-size:20px; font-weight:600; }
+  .main-head .sub { color:var(--muted); font-size:13px; }
+  .main-head .right { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .view { flex:1; overflow-y:auto; display:none; }
+  .view.on { display:flex; flex-direction:column; }
+  .wrap { max-width:940px; margin:0 auto; width:100%; padding:20px 26px 40px; }
+  .wrap.wide { max-width:1080px; }
 
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
-  .btn { padding:6px 13px; border-radius:8px; border:1px solid var(--line); background:var(--panel); font-size:13px; }
-  .btn:hover { border-color:var(--accent2); }
-  .btn.primary { background:linear-gradient(135deg,var(--accent2),var(--accent)); color:#fff; border:0; }
-  .btn.primary:hover { filter:brightness(1.07); }
-  input[type=text], input[type=number], select, textarea { font:inherit; font-size:13px; color:var(--ink);
-    padding:6px 9px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
-  textarea { width:100%; min-height:64px; resize:vertical; }
+  /* Buttons / controls */
+  .btn { padding:7px 15px; border-radius:9px; background:var(--accent); color:#fff; font-weight:600; font-size:13.5px; }
+  .btn:hover { filter:brightness(1.06); }
+  .btn.ghost { background:var(--panel2); color:var(--ink); }
+  .btn.sm { padding:5px 11px; font-size:12.5px; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .link { color:var(--accent2); font-size:12.5px; }
+  .link.danger { color:var(--bad); }
+  .input { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:9px 12px; color:var(--ink); font-size:13.5px; width:100%; }
+  .input:focus { outline:none; border-color:var(--accent2); box-shadow:0 0 0 3px rgba(217,119,87,.15); }
+  .field { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .field > span { font-size:12.5px; font-weight:500; color:var(--muted); }
+  .frow { display:flex; gap:12px; } .frow .field { flex:1; }
 
-  /* Pulse strip */
-  .pulse { display:flex; gap:13px; align-items:flex-start; background:linear-gradient(135deg,var(--panel),var(--panel2));
-    border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:16px; }
-  .pulse svg { width:26px; height:26px; flex:none; margin-top:2px; }
-  .pulse .ptext { font-size:14.5px; }
-  .pulse .pmeta { color:var(--dim); font-size:11.5px; margin-top:4px; }
-
-  /* Live feed */
-  .feedbar { display:flex; gap:8px; margin-bottom:10px; align-items:center; flex-wrap:wrap; }
-  .feed { display:flex; flex-direction:column; gap:6px; }
-  .row { display:flex; gap:10px; align-items:baseline; background:var(--panel); border:1px solid var(--line);
-    border-radius:10px; padding:8px 12px; font-size:13px; animation:none; }
-  .row.fresh { animation:arrive .8s ease; }
-  @keyframes arrive { from { background:var(--goodbg); } to { background:var(--panel); } }
-  .row.watched { box-shadow:inset 3px 0 0 var(--gold); }
-  .row.muted { opacity:.42; }
-  .row .t { color:var(--dim); font-size:11.5px; white-space:nowrap; width:46px; flex:none; }
-  .row .sys { color:var(--muted); font-size:11.5px; white-space:nowrap; flex:none; width:88px;
-    overflow:hidden; text-overflow:ellipsis; }
-  .row .main { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-    font-weight:600; }
-  .row .main .did { font-weight:400; color:var(--muted); }
-  .row .act { color:var(--dim); font-size:11px; font-family:ui-monospace,Menlo,monospace;
-    white-space:nowrap; flex:none; }
-  .tag { flex:none; font-size:10.5px; font-weight:600; padding:1px 8px; border-radius:10px;
-    text-transform:uppercase; letter-spacing:.04em; }
-  .tag.err { background:var(--critbg); color:var(--critc); }
-  .tag.del { background:var(--warnbg); color:var(--warnc); }
-  .tag.exp { background:var(--offbg); color:var(--accent); }
-  .tag.adm { background:var(--offbg); color:var(--gold); }
-  .tag.new { background:var(--goodbg); color:var(--good); }
-  .tag.mod, .tag.other { background:var(--panel2); color:var(--dim); }
-
-  /* Systems */
-  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:12px; }
-  .scard .sys { font-family:var(--serif); font-size:17px; font-weight:600; }
-  .scard .where { color:var(--muted); font-size:12.5px; margin:2px 0 6px; }
-  .scard .hash { font-family:ui-monospace,Menlo,monospace; font-size:10.5px; color:var(--dim); word-break:break-all; }
-  .scard .meta { color:var(--muted); font-size:12.5px; margin:6px 0 10px; }
-  .badge { display:inline-block; border-radius:12px; padding:1px 9px; font-size:11.5px; font-weight:600; }
-  .b-ok { background:var(--goodbg); color:var(--good); }
-  .b-bad { background:var(--critbg); color:var(--critc); }
-  .b-dim { background:var(--panel2); color:var(--dim); }
-  .b-warn { background:var(--warnbg); color:var(--warnc); }
-  .b-info { background:var(--panel2); color:var(--muted); }
-  .b-critical { background:var(--critbg); color:var(--critc); }
-
-  .warning { display:flex; gap:12px; align-items:flex-start; background:var(--panel);
-    border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:8px; }
-  .warning .title { font-weight:600; }
-  .warning .detail { font-size:13px; color:var(--muted); }
-  .warning .body { flex:1; }
-
-  .quiet { color:var(--dim); font-size:13.5px; padding:10px 2px; }
-
-  /* Ask */
-  .thread { display:flex; flex-direction:column; gap:10px; max-width:820px; }
-  .msg { max-width:88%; padding:10px 15px; border-radius:14px; white-space:pre-wrap; }
-  .msg.user { align-self:flex-end; background:linear-gradient(135deg,var(--accent2),var(--accent)); color:#fff; }
-  .msg.clio { align-self:flex-start; background:var(--panel); border:1px solid var(--line); }
-  .askrow { display:flex; gap:8px; max-width:820px; margin-top:12px; }
-  .askrow input { flex:1; padding:9px 13px; border-radius:10px; }
-  .msg table { border-collapse:collapse; margin-top:8px; font-size:12.5px; }
-  .msg th, .msg td { text-align:left; padding:4px 9px; border-bottom:1px solid var(--line); }
+  /* Chat (Ask) */
+  .pulsebar { display:flex; gap:13px; align-items:flex-start; background:linear-gradient(135deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-radius:14px; padding:15px 17px; margin-bottom:18px; box-shadow:var(--shadow); }
+  .pulsebar svg { width:26px; height:26px; flex:none; margin-top:1px; }
+  .pulsebar .ptext { font-size:14.5px; } .pulsebar .pmeta { color:var(--dim); font-size:11.5px; margin-top:5px; }
+  #thread { display:flex; flex-direction:column; gap:14px; }
+  .msg { max-width:86%; padding:11px 15px; border-radius:14px; white-space:pre-wrap; word-wrap:break-word; }
+  .msg.user { align-self:flex-end; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; box-shadow:0 2px 8px rgba(193,95,60,.2); }
+  .msg.bot { align-self:flex-start; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); }
+  .msg.meta { align-self:center; color:var(--muted); font-size:12.5px; background:none; }
+  .msg table { border-collapse:collapse; margin-top:9px; font-size:12.5px; width:100%; }
+  .msg th, .msg td { text-align:left; padding:5px 9px; border-bottom:1px solid var(--line); }
   .msg th { color:var(--muted); font-weight:600; }
+  .chips { display:flex; flex-wrap:wrap; gap:7px; margin-top:4px; }
+  .chip { background:var(--panel2); border:1px solid var(--line); border-radius:18px; padding:6px 13px; font-size:12.5px; color:var(--muted); cursor:pointer; }
+  .chip:hover { border-color:var(--accent2); color:var(--ink); }
+  .composer { border-top:1px solid var(--line); padding:14px 26px; display:flex; justify-content:center; }
+  .composer .inner { max-width:940px; width:100%; display:flex; gap:9px; }
+  .composer textarea { flex:1; resize:none; height:46px; border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:var(--panel); color:var(--ink); }
+  .composer textarea:focus { outline:none; border-color:var(--accent2); }
+  .sendbtn { background:linear-gradient(135deg,var(--accent2),var(--accent)); color:#fff; border-radius:12px; padding:0 20px; font-weight:600; }
+  .sendbtn:hover { filter:brightness(1.07); }
   .scroll { overflow-x:auto; }
 
-  /* Settings overlay */
-  .overlay { position:fixed; inset:0; background:rgba(20,18,14,.45); display:none;
-    align-items:flex-start; justify-content:center; padding:6vh 16px; z-index:50; }
-  .overlay.on { display:flex; }
-  .panel { background:var(--bg); border:1px solid var(--line); border-radius:14px;
-    width:min(680px,95vw); max-height:86vh; display:flex; flex-direction:column; }
-  .p-head { display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line);
-    font-family:var(--serif); font-size:17px; font-weight:600; }
-  .p-head button { margin-left:auto; color:var(--dim); font-size:18px; }
-  .p-list { overflow-y:auto; padding:14px 18px 22px; display:flex; flex-direction:column; gap:12px; }
-  .setcard { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px 15px; }
-  .setcard h3 { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
-  .setrow { display:flex; gap:10px; align-items:center; margin:6px 0; flex-wrap:wrap; }
-  .setrow label { font-size:13px; color:var(--muted); width:150px; flex:none; }
-  .setrow input { width:110px; }
+  /* Live feed */
+  .feedbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .feed { display:flex; flex-direction:column; gap:6px; }
+  .row { display:flex; gap:11px; align-items:baseline; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:9px 13px; font-size:13px; box-shadow:var(--shadow); }
+  .row.fresh { animation:arrive .9s ease; }
+  @keyframes arrive { from { background:var(--goodbg); } to { background:var(--panel); } }
+  .row.watched { box-shadow:inset 3px 0 0 var(--gold), var(--shadow); }
+  .row.muted { opacity:.4; }
+  .row .t { color:var(--dim); font-size:11px; white-space:nowrap; width:42px; flex:none; }
+  .row .sys { color:var(--muted); font-size:11.5px; white-space:nowrap; flex:none; width:92px; overflow:hidden; text-overflow:ellipsis; }
+  .row .main { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+  .row .main .did { font-weight:400; color:var(--muted); }
+  .row .act { color:var(--dim); font-size:10.5px; font-family:ui-monospace,Menlo,monospace; white-space:nowrap; flex:none; }
+  .tag { flex:none; font-size:10px; font-weight:700; padding:1px 7px; border-radius:10px; text-transform:uppercase; letter-spacing:.03em; }
+  .tag.err,.tag.critical { background:var(--critbg); color:var(--critc); }
+  .tag.del,.tag.warn { background:var(--warnbg); color:var(--warnc); }
+  .tag.exp,.tag.adm { background:var(--offbg); color:var(--accent); }
+  .tag.new,.tag.good { background:var(--goodbg); color:var(--good); }
+  .tag.mod,.tag.other,.tag.info { background:var(--panel2); color:var(--dim); }
+
+  /* Cards / systems */
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:13px; }
+  .scard { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); }
+  .scard-h { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px; }
+  .syscard { cursor:pointer; }
+  .syscard:hover { border-color:var(--accent2); }
+  .syscard .sys { font-family:var(--serif); font-size:17px; font-weight:600; }
+  .syscard .where { color:var(--muted); font-size:12.5px; margin:2px 0 8px; }
+  .syscard .hash { font-family:ui-monospace,Menlo,monospace; font-size:10.5px; color:var(--dim); word-break:break-all; }
+  .syscard .meta { color:var(--muted); font-size:12.5px; margin-top:6px; }
+  .badge { display:inline-block; border-radius:12px; padding:1px 9px; font-size:11.5px; font-weight:600; }
+  .b-ok { background:var(--goodbg); color:var(--good); } .b-bad { background:var(--critbg); color:var(--critc); }
+  .b-dim { background:var(--panel2); color:var(--dim); } .b-warn { background:var(--warnbg); color:var(--warnc); }
+  .b-info { background:var(--panel2); color:var(--muted); } .b-critical { background:var(--critbg); color:var(--critc); }
+  .b-hipaa { background:#efe3f5; color:#7a3ea0; } html.dark .b-hipaa { background:#2e2440; color:#c9a6e6; }
+
+  /* Warnings */
+  .warning { display:flex; gap:12px; align-items:flex-start; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px 15px; margin-bottom:9px; box-shadow:var(--shadow); }
+  .warning .body { flex:1; } .warning .title { font-weight:600; } .warning .detail { font-size:13px; color:var(--muted); margin-top:2px; }
+  .warning .src { font-size:10.5px; color:var(--dim); font-family:ui-monospace,Menlo,monospace; }
+  .quiet { color:var(--dim); font-size:13.5px; padding:14px 2px; }
+
+  /* Modal */
+  .overlay { position:fixed; inset:0; background:rgba(30,26,18,.55); display:none; align-items:center; justify-content:center; z-index:40; padding:5vh 16px; }
+  .overlay.open { display:flex; }
+  .panel { width:min(720px,95vw); height:86vh; background:var(--bg); border:1px solid var(--line); border-radius:14px; display:flex; flex-direction:column; box-shadow:0 12px 48px rgba(0,0,0,.3); }
+  .p-head { display:flex; align-items:center; padding:15px 20px; border-bottom:1px solid var(--line); }
+  .p-head .ttl { font-family:var(--serif); font-size:18px; font-weight:600; } .p-head .x { margin-left:auto; color:var(--dim); font-size:20px; }
+  .tabs { display:flex; gap:6px; padding:10px 18px 0; border-bottom:1px solid var(--line); background:var(--bg); }
+  .tabs button { border:1px solid transparent; border-bottom:none; padding:8px 16px; border-radius:9px 9px 0 0; color:var(--muted); font-size:13.5px; font-weight:600; }
+  .tabs button.on { background:var(--panel); border-color:var(--line); color:var(--ink); margin-bottom:-1px; padding-bottom:9px; }
+  .p-list { overflow-y:auto; padding:16px 18px 24px; flex:1; }
   .hint { color:var(--dim); font-size:12px; margin-top:4px; }
-  table.admin { border-collapse:collapse; width:100%; font-size:12.5px; }
-  table.admin th, table.admin td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); }
-  table.admin th { color:var(--muted); font-weight:600; }
-  .keybox { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--panel2);
-    border-radius:8px; padding:8px 10px; word-break:break-all; margin-top:8px; }
+  .setrow { display:flex; gap:10px; align-items:center; margin:8px 0; flex-wrap:wrap; }
+  .setrow label { font-size:13px; color:var(--muted); width:140px; flex:none; }
+  table.tbl { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.tbl th, table.tbl td { text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); }
+  table.tbl th { color:var(--muted); font-weight:600; }
+  .keybox { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--panel2); border-radius:8px; padding:9px 11px; word-break:break-all; margin-top:8px; }
+  .toggle { position:relative; width:38px; height:22px; border-radius:12px; background:var(--line); cursor:pointer; flex:none; transition:background .15s; }
+  .toggle.on { background:var(--good); } .toggle .knob { position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; }
+  .toggle.on .knob { left:18px; }
 </style>
 </head>
 <body>
 <aside class="side">
   <div class="side-top">
     <div class="brand">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22"
-        stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Clio
     </div>
   </div>
   <div class="side-list">
-    <div class="navitem on" data-v="pulse"><span>◉</span> Pulse</div>
-    <div class="navitem" data-v="systems"><span>▦</span> Systems</div>
-    <div class="navitem" data-v="warnings"><span>▲</span> Warnings <span class="cnt" id="warnCnt" style="display:none"></span></div>
-    <div class="navitem" data-v="ask"><span>❯</span> Ask the logs</div>
+    <div class="navitem on" data-v="ask"><span class="ico">✦</span> Ask the logs</div>
+    <div class="navitem" data-v="live"><span class="ico">◉</span> Live</div>
+    <div class="navitem" data-v="systems"><span class="ico">▦</span> Systems</div>
+    <div class="navitem" data-v="warnings"><span class="ico">⚠</span> Warnings <span class="cnt" id="warnCnt" style="display:none"></span></div>
   </div>
   <div class="side-foot">
-    <div class="frow"><button id="settingsBtn">⚙ Settings</button><button id="themeBtn" title="Toggle theme">◐</button></div>
-    <div class="frow" id="footInfo"></div>
+    <div class="footrow">
+      <button class="footbtn" id="settingsBtn"><span>⚙</span> Settings</button>
+      <button class="footbtn" id="themeBtn" style="margin-left:auto" title="Theme">◐</button>
+    </div>
+    <div class="footinfo" id="footInfo"></div>
   </div>
 </aside>
 
 <main class="main">
-  <!-- Pulse -->
-  <div class="view on" id="v-pulse">
-    <div class="vhead"><h1>Pulse</h1><span class="sub">the record, live</span>
-      <div class="right"><label style="font-size:12px;color:var(--dim)"><input type="checkbox" id="showMuted"> show muted</label></div>
-    </div>
-    <div class="pulse">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22"
-        stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <div><div class="ptext" id="pulseText">Reading the room…</div>
-        <div class="pmeta" id="pulseMeta"></div></div>
-    </div>
-    <div class="feedbar">
-      <input type="text" id="feedFilter" placeholder="filter actions and payloads…" style="width:260px">
-      <select id="feedSystem"><option value="">all systems</option></select>
-      <span class="quiet" id="feedStatus"></span>
-    </div>
-    <div class="feed" id="feed"><div class="quiet">Waiting for the first entries…</div></div>
-  </div>
-
-  <!-- Systems -->
-  <div class="view" id="v-systems">
-    <div class="vhead"><h1>Systems</h1><span class="sub">one chain per database</span></div>
-    <div class="cards" id="systems"></div>
-  </div>
-
-  <!-- Warnings -->
-  <div class="view" id="v-warnings">
-    <div class="vhead"><h1>Warnings</h1>
-      <div class="right"><button class="btn" id="scanBtn">Scan now</button></div></div>
-    <div id="warnings"></div>
+  <div class="main-head">
+    <span class="title" id="viewTitle">Ask the logs</span>
+    <span class="sub" id="viewSub">every number comes from a real query</span>
+    <div class="right" id="viewActions"></div>
   </div>
 
   <!-- Ask -->
-  <div class="view" id="v-ask">
-    <div class="vhead"><h1>Ask the logs</h1><span class="sub">every number comes from a real query</span></div>
-    <div class="thread" id="thread"></div>
-    <div class="askrow">
-      <input type="text" id="askInput" placeholder="Who deleted invoices this week? Any weekend activity?">
-      <button class="btn primary" id="askBtn">Ask</button>
+  <div class="view on" id="v-ask">
+    <div class="wrap" style="flex:1">
+      <div class="pulsebar">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><div class="ptext" id="pulseText">Reading the room…</div><div class="pmeta" id="pulseMeta"></div></div>
+      </div>
+      <div id="thread"></div>
     </div>
+    <div class="composer"><div class="inner">
+      <textarea id="askInput" placeholder="Who deleted invoices this week? Any weekend logins? What did Matt change today?"></textarea>
+      <button class="sendbtn" id="askBtn">Ask</button>
+    </div></div>
   </div>
+
+  <!-- Live -->
+  <div class="view" id="v-live"><div class="wrap wide">
+    <div class="feedbar">
+      <input class="input" id="feedFilter" placeholder="filter…" style="width:220px">
+      <select class="input" id="feedSystem" style="width:auto"><option value="">all systems</option></select>
+      <label style="font-size:12.5px;color:var(--muted)"><input type="checkbox" id="showMuted"> show muted</label>
+      <span class="quiet" id="feedStatus" style="margin-left:auto;padding:0"></span>
+    </div>
+    <div class="feed" id="feed"><div class="quiet">Waiting for entries…</div></div>
+  </div></div>
+
+  <!-- Systems -->
+  <div class="view" id="v-systems"><div class="wrap wide">
+    <div class="cards" id="systems"></div>
+  </div></div>
+
+  <!-- Warnings -->
+  <div class="view" id="v-warnings"><div class="wrap">
+    <div id="warnings"></div>
+  </div></div>
 </main>
 
-<!-- Settings -->
-<div class="overlay" id="settingsOverlay">
+<!-- Settings modal -->
+<div class="overlay" id="settings">
   <div class="panel">
-    <div class="p-head">Settings <button id="settingsClose">✕</button></div>
+    <div class="p-head"><span class="ttl">Settings</span><button class="x" id="setClose">✕</button></div>
+    <div class="tabs" id="setTabs">
+      <button data-t="rules" class="on">Rules</button>
+      <button data-t="channels">Channels</button>
+      <button data-t="ai">AI</button>
+      <button data-t="systems">Systems &amp; keys</button>
+      <button data-t="about">About</button>
+    </div>
     <div class="p-list">
-      <div class="setcard">
-        <h3>Watchdog</h3>
-        <div class="setrow"><label>UTC offset (hours)</label><input type="number" id="prefTz" step="1"></div>
-        <div class="setrow"><label>Business hours</label><input type="text" id="prefHours" placeholder="07-19"></div>
-        <div class="setrow"><label>Business days</label><input type="text" id="prefDays" placeholder="1-5"></div>
-        <div class="setrow"><label>Big export rows</label><input type="number" id="prefExport"></div>
-        <div class="hint">Activity outside these windows counts as off-hours. Days: 0 = Sunday.</div>
+      <!-- Rules tab -->
+      <div id="tab-rules">
+        <div class="scard" style="margin-bottom:14px">
+          <div class="scard-h">Describe a rule <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--dim)">— Clio drafts it and shows how often it would have fired</span></div>
+          <div id="ruleThread" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px"></div>
+          <div class="chips" id="ruleStarters"></div>
+          <div class="setrow" style="margin-top:10px">
+            <input class="input" id="ruleInput" placeholder="e.g. tell me about weekend logins, or 20+ deletes in an hour is a HIPAA break">
+            <button class="btn" id="ruleSend">Send</button>
+          </div>
+          <div id="ruleDraft"></div>
+        </div>
+        <div class="scard-h">Active rules</div>
+        <div id="rulesList"></div>
       </div>
-      <div class="setcard">
-        <h3>Watch list</h3>
-        <textarea id="prefWatch" placeholder="one pattern per line, e.g.&#10;.deleted&#10;login.failed&#10;admin."></textarea>
-        <div class="hint">Entries matching these light up gold in the feed.</div>
+      <!-- Channels tab -->
+      <div id="tab-channels" style="display:none">
+        <div class="scard">
+          <div class="scard-h">Slack</div>
+          <div class="field"><span>Incoming webhook URL</span><input class="input" id="chSlack" placeholder="https://hooks.slack.com/services/…"></div>
+          <div class="hint">Warn and critical findings post here after each scan. Create one at api.slack.com → Incoming Webhooks.</div>
+        </div>
+        <div class="scard" style="margin-top:12px">
+          <div class="scard-h">Generic webhook</div>
+          <div class="field"><span>JSON POST URL</span><input class="input" id="chWebhook" placeholder="https://… (Comm bus, Zapier, anything)"></div>
+        </div>
+        <div class="setrow" style="margin-top:12px">
+          <button class="btn" id="chSave">Save channels</button>
+          <button class="btn ghost" id="chTest">Send test alert</button>
+          <span class="quiet" id="chStatus" style="padding:0"></span>
+        </div>
       </div>
-      <div class="setcard">
-        <h3>Mute list</h3>
-        <textarea id="prefMute" placeholder="one pattern per line, e.g.&#10;heartbeat&#10;scan.run"></textarea>
-        <div class="hint">Matching entries dim (or hide, unless "show muted" is on). Still logged, still chained.</div>
+      <!-- AI tab -->
+      <div id="tab-ai" style="display:none">
+        <div class="scard">
+          <div class="scard-h">Model</div>
+          <div class="field"><span>Clio uses this model for the pulse, ask-the-logs, and rule authoring</span>
+            <select class="input" id="aiModel"></select></div>
+          <div class="hint" id="aiState"></div>
+        </div>
+        <div class="scard" style="margin-top:12px">
+          <div class="scard-h">Zero hallucination</div>
+          <div style="font-size:13px;color:var(--muted)">The model never invents a number. It writes SELECT-only SQL against your logs; a deterministic engine runs it, and every rule fires by fixed logic, the same way every time.</div>
+        </div>
       </div>
-      <div class="setrow"><button class="btn primary" id="prefSave">Save</button><span class="quiet" id="prefStatus"></span></div>
-
-      <div class="setcard" id="adminCard">
-        <h3>Systems &amp; keys (admin)</h3>
+      <!-- Systems & keys tab -->
+      <div id="tab-systems" style="display:none">
         <div id="adminLocked" class="setrow">
-          <input type="text" id="adminToken" placeholder="admin token" style="width:260px">
+          <input class="input" id="adminToken" placeholder="admin token" style="width:260px">
           <button class="btn" id="adminUnlock">Unlock</button>
         </div>
         <div id="adminPanel" style="display:none">
-          <div class="scroll" id="adminSystems"></div>
-          <div class="setrow" style="margin-top:10px">
-            <input type="text" id="regId" placeholder="system id" style="width:110px">
-            <input type="text" id="regLabel" placeholder="label" style="width:120px">
-            <input type="text" id="regServer" placeholder="FM server" style="width:160px">
-            <input type="text" id="regFile" placeholder="file" style="width:120px">
-            <button class="btn primary" id="regMint">Register + mint</button>
+          <div class="scroll"><table class="tbl" id="adminSystems"></table></div>
+          <div class="scard-h" style="margin-top:18px">Register a system / mint a key</div>
+          <div class="setrow">
+            <input class="input" id="regId" placeholder="system id" style="width:120px">
+            <input class="input" id="regLabel" placeholder="label" style="width:130px">
+            <input class="input" id="regServer" placeholder="FM server" style="width:150px">
+            <input class="input" id="regFile" placeholder="file(s)" style="width:120px">
           </div>
+          <div class="setrow"><button class="btn" id="regMint">Register + mint key</button></div>
           <div id="mintResult"></div>
         </div>
       </div>
-      <div class="setcard"><h3>About</h3><div class="quiet" id="aboutBox"></div></div>
+      <!-- About tab -->
+      <div id="tab-about" style="display:none">
+        <div class="scard"><div class="scard-h">Clio</div>
+          <div id="aboutBox" style="font-size:13.5px;color:var(--muted)"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
-const j = async (url, opts) => (await fetch(url, opts)).json();
-const post = (url, body) => j(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body || {}) });
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const qs = new URLSearchParams(location.search);
+const KEY = qs.get("key") ? "?key=" + encodeURIComponent(qs.get("key")) : "";
+const api = (p) => p + (KEY && p.includes("?") ? "&" + KEY.slice(1) : KEY);
+const j = (p, o) => fetch(api(p), o).then((r) => r.json());
+const post = (p, b) => j(p, { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(b||{}) });
 
 // Theme
-if (localStorage.clio_theme === "dark" || (!localStorage.clio_theme && matchMedia("(prefers-color-scheme: dark)").matches))
-  document.documentElement.classList.add("dark");
-$("themeBtn").onclick = () => {
-  const d = document.documentElement.classList.toggle("dark");
-  localStorage.clio_theme = d ? "dark" : "light";
-};
+if (localStorage.clio_theme === "dark" || (!localStorage.clio_theme && matchMedia("(prefers-color-scheme:dark)").matches)) document.documentElement.classList.add("dark");
+$("themeBtn").onclick = () => { const d = document.documentElement.classList.toggle("dark"); localStorage.clio_theme = d ? "dark" : "light"; };
 
 // Nav
+const TITLES = { ask:["Ask the logs","every number comes from a real query"], live:["Live","the record, as it happens"], systems:["Systems","one chain per database"], warnings:["Warnings","what's worth a glance"] };
 document.querySelectorAll(".navitem").forEach((n) => n.onclick = () => {
   document.querySelectorAll(".navitem").forEach((x) => x.classList.toggle("on", x === n));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("on", v.id === "v-" + n.dataset.v));
+  const [t, s] = TITLES[n.dataset.v]; $("viewTitle").textContent = t; $("viewSub").textContent = s;
+  if (n.dataset.v === "live") { $("askInput"); }
 });
 
-// ---- prefs + classification --------------------------------------------------
+// ---------- prefs + classification ----------
 let prefs = { watch:[], mute:[] };
-function classify(action) {
-  if (/error|fail|denied|invalid|tamper/i.test(action)) return "err";
-  if (/\.deleted?$/i.test(action)) return "del";
-  if (/export|print|pdf|save/i.test(action)) return "exp";
-  if (/admin|key_|privil|account/i.test(action)) return "adm";
-  if (/\.new$|creat/i.test(action)) return "new";
-  if (/modif/i.test(action)) return "mod";
+function classify(a) {
+  if (/error|fail|denied|invalid|tamper/i.test(a)) return "err";
+  if (/\.deleted?$/i.test(a)) return "del";
+  if (/export|print|pdf|save/i.test(a)) return "exp";
+  if (/admin|key_|privil|account/i.test(a)) return "adm";
+  if (/\.new$|creat/i.test(a)) return "new";
+  if (/modif|edit|change/i.test(a)) return "mod";
   return "other";
 }
-const matchesAny = (s, pats) => pats.some((p) => p && s.toLowerCase().includes(p.toLowerCase()));
+const matchesAny = (s, pats) => (pats||[]).some((p) => p && s.toLowerCase().includes(p.toLowerCase()));
 
-// ---- pulse + live feed ---------------------------------------------------------
-let latestTs = null;
-const seen = new Set();
-
-function ago(iso) {
-  const s = (Date.now() - Date.parse(iso)) / 1000;
-  if (s < 60) return Math.max(1, Math.round(s)) + "s";
-  if (s < 3600) return Math.round(s / 60) + "m";
-  if (s < 86400) return Math.round(s / 3600) + "h";
-  return Math.round(s / 86400) + "d";
+// ---------- Ask ----------
+const askMessages = [];
+const ASK_STARTERS = ["What happened today?", "Any weekend or after-hours activity?", "Who deleted the most records this week?", "Show logins by person"];
+function renderMd(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>"); }
+function tableHtml(a) {
+  if (!a.columns || !a.rows) return "";
+  return `<div class="scroll"><table><tr>${a.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
+    a.rows.slice(0, 50).map((r) => `<tr>${a.columns.map((c) => `<td>${esc(r[c])}</td>`).join("")}</tr>`).join("") + "</table></div>";
 }
-
-// Pick a human label for a record from its snapshot: a name-ish field.
-function displayName(data) {
-  if (!data || typeof data !== "object") return "";
-  for (const k of ["Company Name", "Name", "Full Name", "Title", "Task Name",
-    "Project Name", "Description", "First", "Last", "Note"]) {
-    if (data[k]) return String(data[k]).slice(0, 60);
-  }
-  for (const [k, v] of Object.entries(data)) {
-    if (/id|^z_|TS$|date/i.test(k)) continue;
-    if (typeof v === "string" && v && v.length < 50) return v;
-  }
-  return "";
+function askStarters() {
+  if (askMessages.length) return "";
+  return `<div class="chips">${ASK_STARTERS.map((s) => `<span class="chip" onclick="askSend('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</span>`).join("")}</div>`;
 }
+function renderThread() {
+  $("thread").innerHTML = askMessages.map((m) => m.role === "user"
+    ? `<div class="msg user">${esc(m.content)}</div>`
+    : `<div class="msg bot">${renderMd(m.content)}${(m.artifacts||[]).map(tableHtml).join("")}</div>`).join("")
+    + askStarters();
+  $("thread").lastElementChild?.scrollIntoView({ block:"end" });
+}
+async function askSend(q) {
+  q = q || $("askInput").value.trim(); if (!q) return;
+  $("askInput").value = "";
+  askMessages.push({ role:"user", content:q });
+  renderThread();
+  $("thread").insertAdjacentHTML("beforeend", `<div class="msg meta" id="thinking">reading the logs…</div>`);
+  const r = await post("/api/ask", { messages: askMessages.map((m) => ({ role:m.role, content:m.content })) });
+  $("thinking")?.remove();
+  askMessages.push({ role:"assistant", content: r.error ? ("Something went wrong: " + r.error) : (r.reply || "…"), artifacts: r.artifacts || [] });
+  renderThread();
+}
+$("askBtn").onclick = () => askSend();
+$("askInput").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askSend(); } };
 
-// Turn any entry into { text, who, mute }. Every row reads as a sentence;
-// raw JSON is only ever the hover title.
-function humanLine(e) {
-  let p = {};
-  try { p = JSON.parse(e.payload_json); } catch { return { text: e.action, who: "", mute: false }; }
-  const who = p.account_name || (p.data && p.data.z_Modifier) || "";
-
-  if (typeof p.message === "string" && p.message) return { text: p.message, who, mute: false };
-
-  // OnWindowTransaction entries: action = system.Table.op
-  const parts = e.action.split(".");
-  if (parts.length >= 3 && p.table) {
-    const op = parts[parts.length - 1];
-    const name = displayName(p.data);
-    const label = name ? `${p.table} "${name}"` : `${p.table} #${p.record_id}`;
-    let text;
-    if (p.changed && typeof p.changed === "object") {
-      const fs = Object.keys(p.changed).filter((f) => !/^z_/.test(f));
-      text = fs.length ? `changed ${fs.join(", ")} on ${label}` : `touched ${label}`;
-    } else {
-      text = `${op === "new" ? "created" : op === "deleted" ? "deleted" : "edited"} ${label}`;
+// ---------- pulse ----------
+async function pollPulse() {
+  try {
+    const p = await j("/api/pulse");
+    if (p.summary) {
+      $("pulseText").textContent = p.summary;
+      $("pulseMeta").textContent = `as of ${new Date(p.generated_at).toLocaleTimeString()} · ${p.stats.events_last_24h} events / 24h · ${p.stats.open_warnings} open warning${p.stats.open_warnings===1?"":"s"}`;
     }
-    return { text, who, mute: p.table === "fmLog" }; // don't surface the logger logging itself
-  }
-
-  // fmLog-style human sentence carried in the action, or a flat "view record"
-  if (/\s/.test(e.action)) return { text: e.action, who, mute: false };
-  return { text: e.action, who, mute: false };
+  } catch {}
 }
 
+// ---------- live feed ----------
+let latestTs = null; const seen = new Set();
+function ago(iso) { const s=(Date.now()-Date.parse(iso))/1000; if(s<60)return Math.max(1,Math.round(s))+"s"; if(s<3600)return Math.round(s/60)+"m"; if(s<86400)return Math.round(s/3600)+"h"; return Math.round(s/86400)+"d"; }
+function displayName(d) { if(!d||typeof d!=="object")return""; for(const k of ["Company Name","Name","Title","Task Name","Note","field_name"]) if(d[k]) return String(d[k]).slice(0,60); for(const [k,v] of Object.entries(d)){ if(/id|^z_|TS$|date/i.test(k))continue; if(typeof v==="string"&&v&&v.length<50)return v; } return ""; }
+function humanLine(e) {
+  let p={}; try{p=JSON.parse(e.payload_json);}catch{return{text:e.action,who:""};}
+  const who = p.account_name || (p.data&&p.data.z_Modifier) || "";
+  if (typeof p.message==="string"&&p.message) return { text:p.message, who };
+  const parts = e.action.split(".");
+  if (parts.length>=3 && p.table) {
+    const op=parts[parts.length-1], name=displayName(p.data), label=name?`${p.table} "${name}"`:`${p.table} #${p.record_id}`;
+    let text;
+    if (p.changed) { const fs=Object.keys(p.changed).filter((f)=>!/^z_/.test(f)); text=fs.length?`changed ${fs.join(", ")} on ${label}`:`touched ${label}`; }
+    else text=`${op==="new"?"created":op==="deleted"?"deleted":"edited"} ${label}`;
+    return { text, who, mute:p.table==="fmLog" };
+  }
+  return { text:e.action, who };
+}
 function rowHtml(e, fresh) {
-  const tag = classify(e.action);
-  const h = humanLine(e);
-  const sysMuted = e.system_id === "clio"; // Clio's own scans/key mints: plumbing
-  const muted = h.mute || sysMuted || matchesAny(e.action, prefs.mute);
+  const tag=classify(e.action), h=humanLine(e);
+  const muted = h.mute || e.system_id==="clio" || matchesAny(e.action, prefs.mute);
   const watched = matchesAny(e.action, prefs.watch);
   const main = h.who ? `${esc(h.who)} <span class="did">${esc(h.text)}</span>` : esc(h.text);
-  return `<div class="row ${fresh ? "fresh" : ""} ${watched ? "watched" : ""} ${muted ? "muted" : ""}"
-      data-sys="${esc(e.system_id)}" data-act="${esc(e.action.toLowerCase())}" data-muted="${muted ? 1 : 0}"
-      title="${esc(e.payload_json)}">
-    <span class="t">${ago(e.ts_server)}</span>
-    <span class="tag ${tag}">${tag === "other" ? "·" : tag}</span>
-    <span class="sys">${esc(e.system_id)}</span>
-    <span class="main">${main}</span>
-    <span class="act">${esc(e.action)}</span>
-  </div>`;
+  return `<div class="row ${fresh?"fresh":""} ${watched?"watched":""} ${muted?"muted":""}" data-sys="${esc(e.system_id)}" data-muted="${muted?1:0}" title="${esc(e.payload_json)}">
+    <span class="t">${ago(e.ts_server)}</span><span class="tag ${tag}">${tag==="other"?"·":tag}</span>
+    <span class="sys">${esc(e.system_id)}</span><span class="main">${main}</span><span class="act">${esc(e.action)}</span></div>`;
 }
-
 function applyFeedFilters() {
-  const q = $("feedFilter").value.trim().toLowerCase();
-  const sys = $("feedSystem").value;
-  const showMuted = $("showMuted").checked;
+  const q=$("feedFilter").value.trim().toLowerCase(), sys=$("feedSystem").value, sm=$("showMuted").checked;
   document.querySelectorAll("#feed .row").forEach((r) => {
-    const hit = (!q || r.textContent.toLowerCase().includes(q)) &&
-      (!sys || r.dataset.sys === sys) &&
-      (showMuted || r.dataset.muted !== "1");
+    const hit=(!q||r.textContent.toLowerCase().includes(q))&&(!sys||r.dataset.sys===sys)&&(sm||r.dataset.muted!=="1");
     r.style.display = hit ? "" : "none";
   });
 }
-["feedFilter", "feedSystem", "showMuted"].forEach((id) => $(id).oninput = applyFeedFilters);
-
+["feedFilter","feedSystem","showMuted"].forEach((id) => $(id).oninput = applyFeedFilters);
 async function pollFeed() {
   try {
     const r = await j("/api/logs?limit=60" + (latestTs ? "&since=" + encodeURIComponent(latestTs) : ""));
-    if (r.entries.length) {
+    if (r.entries && r.entries.length) {
       if (latestTs === null) $("feed").innerHTML = "";
-      const html = r.entries.map((e) => {
-        const k = e.system_id + "#" + e.seq;
-        if (seen.has(k)) return "";
-        seen.add(k);
-        return rowHtml(e, latestTs !== null);
-      }).join("");
+      const html = r.entries.map((e) => { const k=e.system_id+"#"+e.seq; if(seen.has(k))return""; seen.add(k); return rowHtml(e, latestTs!==null); }).join("");
       $("feed").insertAdjacentHTML("afterbegin", html);
       latestTs = r.latest_ts || latestTs;
-      const rows = document.querySelectorAll("#feed .row");
-      for (let i = 250; i < rows.length; i++) rows[i].remove();
+      const rows = document.querySelectorAll("#feed .row"); for (let i=250;i<rows.length;i++) rows[i].remove();
       applyFeedFilters();
     }
     $("feedStatus").textContent = "live · " + new Date().toLocaleTimeString();
   } catch { $("feedStatus").textContent = "reconnecting…"; }
 }
 
-async function pollPulse() {
-  try {
-    const p = await j("/api/pulse");
-    if (p.summary) {
-      $("pulseText").textContent = p.summary;
-      $("pulseMeta").textContent = `as of ${new Date(p.generated_at).toLocaleTimeString()} · ` +
-        `${p.stats.events_last_24h} events / 24h · ${p.stats.open_warnings} open warning${p.stats.open_warnings === 1 ? "" : "s"}`;
-    }
-  } catch {}
-}
-
-// ---- systems -------------------------------------------------------------------
+// ---------- systems ----------
 async function loadOverview() {
   const o = await j("/api/overview");
-  $("footInfo").textContent = `v${o.version} · AI ${o.ai ? "on" : "off"}`;
-  $("aboutBox").innerHTML = `Clio v${esc(o.version)} · AI ${o.ai ? "on" : "off"} · ${location.origin}<br>` +
-    `Append-only, hash-chained, anchored in your own FileMaker file.`;
-  const sel = $("feedSystem");
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">all systems</option>' +
-    o.systems.map((s) => `<option ${cur === s.system_id ? "selected" : ""}>${esc(s.system_id)}</option>`).join("");
+  $("footInfo").textContent = `v${o.version} · AI ${o.ai?"on":"off"}`;
+  $("aboutBox").innerHTML = `Clio v${esc(o.version)} · AI ${o.ai?"on":"off"}<br>${esc(location.origin)}<br><br>Inviolate logs that live outside FileMaker. Append-only, hash-chained, anchored in your own file. The historian does not take edits from the people she is writing about.`;
+  const sel=$("feedSystem"), cur=sel.value;
+  sel.innerHTML = '<option value="">all systems</option>' + o.systems.map((s) => `<option ${cur===s.system_id?"selected":""}>${esc(s.system_id)}</option>`).join("");
   $("systems").innerHTML = o.systems.length ? o.systems.map((s) => `
-    <div class="card scard">
-      <div class="sys">${esc(s.label || s.system_id)}
-        ${s.open_warnings ? `<span class="badge b-warn">${s.open_warnings} open</span>` : ""}
-        <span class="badge verify-badge b-dim">unverified</span></div>
-      <div class="where">${s.fm_file || s.fm_server ? esc(s.fm_file || "?") + " on " + esc(s.fm_server || "?") : esc(s.system_id)}</div>
-      <div class="hash">#${s.seq} · ${esc(s.entry_hash || "")}</div>
-      <div class="meta">${s.entry_count} entries · last ${s.last_ts_server ? ago(s.last_ts_server) + " ago" : "never"}</div>
-      <button class="btn" onclick="verify('${esc(s.system_id)}', this)">Verify chain</button>
-    </div>`).join("")
-    : '<div class="quiet">Nothing logged yet. Point a system at POST /v1/log and the chain starts itself.</div>';
+    <div class="scard syscard" onclick="openSystem('${esc(s.system_id)}')">
+      <div class="sys">${esc(s.label||s.system_id)} ${s.open_warnings?`<span class="badge b-warn">${s.open_warnings}</span>`:""}</div>
+      <div class="where">${s.fm_file||s.fm_server?esc(s.fm_file||"?")+" on "+esc(s.fm_server||"?"):"&nbsp;"}</div>
+      <div class="hash">#${s.seq} · ${esc((s.entry_hash||"").slice(0,32))}${s.entry_hash?"…":""}</div>
+      <div class="meta">${s.entry_count} entries · last ${s.last_ts_server?ago(s.last_ts_server)+" ago":"never"}</div>
+    </div>`).join("") : '<div class="quiet">No systems yet. Register one in Settings → Systems &amp; keys, point it at POST /v1/log, and the chain starts itself.</div>';
 }
 
-async function verify(sys, btn) {
-  btn.textContent = "Verifying…";
-  const v = await j("/api/verify?system_id=" + encodeURIComponent(sys));
-  const badge = btn.closest(".scard").querySelector(".verify-badge");
-  badge.className = "badge verify-badge " + (v.valid ? "b-ok" : "b-bad");
-  badge.textContent = v.valid ? `intact · ${v.checked} checked` : `BROKEN at #${v.first_bad_seq}`;
-  btn.textContent = "Verify chain";
+async function openSystem(sid) {
+  const [ov, logs, ver] = await Promise.all([ j("/api/overview"), j("/api/logs?system_id="+encodeURIComponent(sid)+"&limit=8"), j("/api/verify?system_id="+encodeURIComponent(sid)) ]);
+  const s = ov.systems.find((x) => x.system_id === sid) || { system_id: sid };
+  // redacted tail: show shape, mask payload values
+  const tail = (logs.entries||[]).map((e) => { const h=humanLine(e); const who=h.who?esc(h.who)+" ":""; return `<div class="row" style="box-shadow:none"><span class="t">${ago(e.ts_server)}</span><span class="tag ${classify(e.action)}">${classify(e.action)}</span><span class="main">${who}<span class="did">${esc(redact(h.text))}</span></span></div>`; }).join("") || '<div class="quiet">No entries yet.</div>';
+  openModalHTML(esc(s.label||sid), `
+    <div class="scard"><div class="scard-h">Identity</div>
+      <div class="setrow"><label>System id</label><span>${esc(sid)}</span></div>
+      <div class="setrow"><label>FM server</label><span>${esc(s.fm_server||"—")}</span></div>
+      <div class="setrow"><label>File(s)</label><span>${esc(s.fm_file||"—")}</span></div>
+    </div>
+    <div class="scard" style="margin-top:12px"><div class="scard-h">Chain</div>
+      <div class="setrow"><label>Head</label><span>#${s.seq||0}</span></div>
+      <div class="setrow"><label>Entries</label><span>${s.entry_count||0}</span></div>
+      <div class="setrow"><label>Verify</label><span class="badge ${ver.valid?"b-ok":"b-bad"}">${ver.valid?`intact · ${ver.checked} checked`:`BROKEN at #${ver.first_bad_seq}`}</span></div>
+      <div class="hash" style="margin-top:6px">${esc(s.entry_hash||"")}</div>
+    </div>
+    <div class="scard" style="margin-top:12px"><div class="scard-h">Recent activity <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--dim)">— values redacted</span></div>
+      <div class="feed">${tail}</div>
+    </div>`);
+}
+function redact(t) { return String(t).replace(/"[^"]*"/g, '"•••"').replace(/\b\d[\d,.]{2,}\b/g, "•••"); }
+
+// generic modal reuse: a lightweight second overlay built on the fly
+function openModalHTML(title, html) {
+  let o = $("adhoc");
+  if (!o) { o = document.createElement("div"); o.id="adhoc"; o.className="overlay"; document.body.appendChild(o); }
+  o.innerHTML = `<div class="panel"><div class="p-head"><span class="ttl">${title}</span><button class="x" onclick="this.closest('.overlay').classList.remove('open')">✕</button></div><div class="p-list">${html}</div></div>`;
+  o.classList.add("open");
+  o.onclick = (e) => { if (e.target === o) o.classList.remove("open"); };
 }
 
-// ---- warnings ------------------------------------------------------------------
+// ---------- warnings ----------
 async function loadWarnings() {
   const w = await j("/api/warnings");
-  const cnt = $("warnCnt");
-  cnt.style.display = w.warnings.length ? "" : "none";
-  cnt.textContent = w.warnings.length;
+  const cnt=$("warnCnt"); cnt.style.display = w.warnings.length?"":"none"; cnt.textContent = w.warnings.length;
   $("warnings").innerHTML = w.warnings.length ? w.warnings.map((x) => `
-    <div class="warning">
-      <span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span>
-      <div class="body">
-        <div class="title">${esc(x.title)} <span class="quiet" style="display:inline">· ${esc(x.system_id)}</span></div>
+    <div class="warning"><span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span>
+      <div class="body"><div class="title">${esc(x.title)} ${x.class?`<span class="badge b-hipaa">${esc(x.class)}</span>`:""}</div>
         <div class="detail">${esc(x.detail)}</div>
-      </div>
-      <button class="btn" onclick="ack('${esc(x.id)}')">Acknowledge</button>
-    </div>`).join("")
+        <div class="src">${esc(x.system_id)} · ${esc(x.source||"auto")}</div></div>
+      <button class="btn ghost sm" onclick="ackW('${esc(x.id)}')">Acknowledge</button></div>`).join("")
     : '<div class="quiet">No open warnings. Quiet is good.</div>';
 }
-async function ack(id) { await post("/api/warnings/" + id + "/ack"); loadWarnings(); loadOverview(); }
-$("scanBtn").onclick = async () => {
-  $("scanBtn").textContent = "Scanning…";
-  await post("/api/scan", { force: true });
-  $("scanBtn").textContent = "Scan now";
-  loadWarnings(); pollPulse();
-};
+async function ackW(id) { await post("/api/warnings/"+id+"/ack"); loadWarnings(); loadOverview(); }
+$("viewActions").innerHTML = "";
 
-// ---- ask -----------------------------------------------------------------------
-const askMessages = [];
-function tableHtml(a) {
-  return `<div class="scroll"><table><tr>${a.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
-    a.rows.slice(0, 50).map((r) => `<tr>${a.columns.map((c) => `<td>${esc(r[c])}</td>`).join("")}</tr>`).join("") +
-    "</table></div>";
-}
-async function ask() {
-  const q = $("askInput").value.trim();
-  if (!q) return;
-  $("askInput").value = "";
-  askMessages.push({ role: "user", content: q });
-  $("thread").insertAdjacentHTML("beforeend",
-    `<div class="msg user">${esc(q)}</div><div class="msg clio" id="pending">…</div>`);
-  $("pending").scrollIntoView({ block: "end" });
-  const r = await post("/api/ask", { messages: askMessages });
-  const el = $("pending"); el.removeAttribute("id");
-  if (r.error) { el.textContent = "Something went wrong: " + r.error; return; }
-  askMessages.push({ role: "assistant", content: r.reply });
-  el.innerHTML = esc(r.reply) + (r.artifacts || []).map(tableHtml).join("");
-}
-$("askBtn").onclick = ask;
-$("askInput").onkeydown = (e) => { if (e.key === "Enter") ask(); };
+// ---------- settings modal ----------
+$("settingsBtn").onclick = () => { $("settings").classList.add("open"); loadPrefsUI(); loadAI(); loadRules(); loadAdmin(); };
+$("setClose").onclick = () => $("settings").classList.remove("open");
+$("settings").onclick = (e) => { if (e.target === $("settings")) $("settings").classList.remove("open"); };
+$("setTabs").querySelectorAll("button").forEach((b) => b.onclick = () => {
+  $("setTabs").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x===b));
+  ["rules","channels","ai","systems","about"].forEach((t) => $("tab-"+t).style.display = t===b.dataset.t?"":"none");
+});
 
-// ---- settings ------------------------------------------------------------------
-$("settingsBtn").onclick = () => { $("settingsOverlay").classList.add("on"); loadPrefs(); loadAdmin(); };
-$("settingsClose").onclick = () => $("settingsOverlay").classList.remove("on");
-$("settingsOverlay").onclick = (e) => { if (e.target === $("settingsOverlay")) $("settingsOverlay").classList.remove("on"); };
-
-async function loadPrefs() {
+// Channels
+async function loadPrefsUI() {
   prefs = await j("/api/prefs");
-  $("prefTz").value = prefs.tz_offset;
-  $("prefHours").value = prefs.business_hours;
-  $("prefDays").value = prefs.business_days;
-  $("prefExport").value = prefs.export_rows;
-  $("prefWatch").value = prefs.watch.join("\n");
-  $("prefMute").value = prefs.mute.join("\n");
+  $("chSlack").value = prefs.slack_webhook || "";
+  $("chWebhook").value = prefs.alert_webhook || "";
 }
-$("prefSave").onclick = async () => {
-  prefs = await post("/api/prefs", {
-    tz_offset: Number($("prefTz").value),
-    business_hours: $("prefHours").value.trim(),
-    business_days: $("prefDays").value.trim(),
-    export_rows: Number($("prefExport").value),
-    watch: $("prefWatch").value.split("\n").map((s) => s.trim()).filter(Boolean),
-    mute: $("prefMute").value.split("\n").map((s) => s.trim()).filter(Boolean),
-  });
-  $("prefStatus").textContent = "Saved.";
-  setTimeout(() => $("prefStatus").textContent = "", 2000);
-  document.querySelectorAll("#feed .row").forEach((r) => {
-    r.classList.toggle("watched", matchesAny(r.dataset.act, prefs.watch));
-    const m = matchesAny(r.dataset.act, prefs.mute);
-    r.classList.toggle("muted", m);
-    r.dataset.muted = m ? 1 : 0;
-  });
-  applyFeedFilters();
+$("chSave").onclick = async () => {
+  prefs = await post("/api/prefs", { slack_webhook:$("chSlack").value.trim(), alert_webhook:$("chWebhook").value.trim() });
+  $("chStatus").textContent = "Saved.";
+  setTimeout(() => $("chStatus").textContent="", 2000);
+};
+$("chTest").onclick = async () => {
+  $("chStatus").textContent = "Sending…";
+  const r = await post("/api/notify-test");
+  $("chStatus").textContent = `Sent → Slack:${r.sent?.slack?"✓":"—"} webhook:${r.sent?.webhook?"✓":"—"}`;
 };
 
-// Admin
-const adminToken = () => sessionStorage.getItem("clio_admin") || "";
-const adminHeaders = () => ({ Authorization: "Bearer " + adminToken(), "Content-Type": "application/json" });
+// AI
+async function loadAI() {
+  const a = await j("/api/ai");
+  $("aiModel").innerHTML = a.models.map((m) => `<option value="${esc(m.id)}" ${m.id===a.model?"selected":""}>${esc(m.label)} — ${esc(m.note)}</option>`).join("");
+  $("aiState").textContent = a.available ? "Anthropic key detected." : "No Anthropic key set — the pulse falls back to plain counts and rule authoring is disabled. Set ANTHROPIC_API_KEY as a Fly secret.";
+}
+$("aiModel").onchange = async () => { await post("/api/ai", { model:$("aiModel").value }); };
+
+// Rules — conversational author
+const ruleMessages = [];
+const RULE_STARTERS = ["Tell me about weekend logins", "Flag 20+ deletes in an hour (HIPAA)", "Any big exports over 1000 rows", "When temp accounts log in after hours"];
+function renderRuleThread() {
+  $("ruleThread").innerHTML = ruleMessages.map((m) => m.role==="user"
+    ? `<div class="msg user" style="max-width:100%">${esc(m.content)}</div>`
+    : `<div class="msg bot" style="max-width:100%">${renderMd(m.content)}</div>`).join("");
+  $("ruleStarters").innerHTML = ruleMessages.length ? "" : RULE_STARTERS.map((s) => `<span class="chip" onclick="ruleSend('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</span>`).join("");
+}
+async function ruleSend(q) {
+  q = q || $("ruleInput").value.trim(); if (!q) return;
+  $("ruleInput").value=""; ruleMessages.push({ role:"user", content:q }); renderRuleThread();
+  const r = await post("/api/rules/author", { messages: ruleMessages });
+  if (r.error) { ruleMessages.push({ role:"assistant", content:"Error: "+r.error }); renderRuleThread(); return; }
+  ruleMessages.push({ role:"assistant", content: r.reply || "…" }); renderRuleThread();
+  if (r.draft) showDraft(r.draft, r.preview);
+}
+$("ruleSend").onclick = () => ruleSend();
+$("ruleInput").onkeydown = (e) => { if (e.key==="Enter") ruleSend(); };
+let pendingDraft = null;
+function showDraft(draft, preview) {
+  pendingDraft = draft;
+  const fired = preview ? `Would have fired <b>${preview.would_fire}</b> time${preview.would_fire===1?"":"s"} in the last ${preview.days} days (${preview.total_matches} matching events).` : "";
+  $("ruleDraft").innerHTML = `<div class="scard" style="margin-top:12px;border-color:var(--accent2)">
+    <div class="scard-h">Proposed rule</div>
+    <div style="font-weight:600">${esc(draft.name)} <span class="badge b-${esc(draft.severity)}">${esc(draft.severity)}</span> ${draft.class?`<span class="badge b-hipaa">${esc(draft.class)}</span>`:""}</div>
+    <div style="font-size:13px;color:var(--muted);margin:4px 0 8px">${esc(draft.description)}</div>
+    <div class="hint">${fired}</div>
+    <div class="setrow" style="margin-top:10px"><button class="btn" id="ruleSaveBtn">Save rule</button><button class="btn ghost" onclick="$('ruleDraft').innerHTML='';pendingDraft=null">Discard</button></div>
+  </div>`;
+  $("ruleSaveBtn").onclick = async () => { await post("/api/rules", pendingDraft); $("ruleDraft").innerHTML=""; pendingDraft=null; loadRules(); };
+}
+async function loadRules() {
+  const { rules } = await j("/api/rules");
+  $("rulesList").innerHTML = rules.length ? rules.map((r) => `
+    <div class="warning"><span class="toggle ${r.enabled?"on":""}" onclick="toggleRule('${r.id}',${r.enabled?0:1})"><span class="knob"></span></span>
+      <div class="body"><div class="title">${esc(r.name)} <span class="badge b-${esc(r.severity)}">${esc(r.severity)}</span> ${r.class?`<span class="badge b-hipaa">${esc(r.class)}</span>`:""}</div>
+        <div class="detail">${esc(r.description)}</div>
+        <div class="src">would have fired ${r.would_fire_30d ?? "—"}× in 30 days</div></div>
+      <button class="link danger" onclick="delRule('${r.id}')">delete</button></div>`).join("")
+    : '<div class="quiet">No rules yet. Describe one above and Clio will draft it.</div>';
+}
+async function toggleRule(id, on) { await j("/api/rules/"+id, { method:"PATCH", headers:{"content-type":"application/json"}, body:JSON.stringify({enabled:!!on}) }); loadRules(); }
+async function delRule(id) { await j("/api/rules/"+id, { method:"DELETE" }); loadRules(); }
+
+// Admin (systems & keys)
+const adminTok = () => sessionStorage.getItem("clio_admin") || "";
+const adminH = () => ({ Authorization:"Bearer "+adminTok(), "content-type":"application/json" });
 async function loadAdmin() {
-  if (!adminToken()) return;
-  const r = await fetch("/v1/admin/systems", { headers: adminHeaders() });
+  if (!adminTok()) return;
+  const r = await fetch(api("/v1/admin/systems"), { headers: adminH() });
   if (!r.ok) { sessionStorage.removeItem("clio_admin"); return; }
   const { data } = await r.json();
-  $("adminLocked").style.display = "none";
-  $("adminPanel").style.display = "block";
-  $("adminSystems").innerHTML = `<table class="admin">
-    <tr><th>system</th><th>label</th><th>FM server</th><th>file</th><th>keys</th><th>head</th></tr>` +
-    data.systems.map((s) => `<tr><td>${esc(s.system_id)}</td><td>${esc(s.label || "")}</td>
-      <td>${esc(s.fm_server || "")}</td><td>${esc(s.fm_file || "")}</td>
-      <td>${s.active_keys}</td><td>#${s.seq}</td></tr>`).join("") + "</table>";
+  $("adminLocked").style.display="none"; $("adminPanel").style.display="block";
+  $("adminSystems").innerHTML = `<tr><th>system</th><th>label</th><th>server</th><th>file</th><th>keys</th><th>head</th></tr>` +
+    data.systems.map((s) => `<tr><td>${esc(s.system_id)}</td><td>${esc(s.label||"")}</td><td>${esc(s.fm_server||"")}</td><td>${esc(s.fm_file||"")}</td><td>${s.active_keys}</td><td>#${s.seq}</td></tr>`).join("");
 }
-$("adminUnlock").onclick = async () => {
-  sessionStorage.setItem("clio_admin", $("adminToken").value.trim());
-  await loadAdmin();
-  if ($("adminPanel").style.display === "none") alert("That token was not accepted.");
-};
+$("adminUnlock").onclick = async () => { sessionStorage.setItem("clio_admin", $("adminToken").value.trim()); await loadAdmin(); if ($("adminPanel").style.display==="none") alert("Token not accepted."); };
 $("regMint").onclick = async () => {
-  const body = { system_id: $("regId").value.trim(), label: $("regLabel").value.trim() || null,
-    fm_server: $("regServer").value.trim() || null, fm_file: $("regFile").value.trim() || null };
-  if (!body.system_id) return alert("system id is required");
-  const r = await fetch("/v1/admin/keys", { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) });
-  const j2 = await r.json();
-  if (!j2.ok) return alert(j2.error?.message || "mint failed");
-  $("mintResult").innerHTML = `<div class="keybox">Copy it now, it is shown exactly once:<br><strong>${esc(j2.data.key)}</strong></div>`;
+  const body = { system_id:$("regId").value.trim(), label:$("regLabel").value.trim()||null, fm_server:$("regServer").value.trim()||null, fm_file:$("regFile").value.trim()||null };
+  if (!body.system_id) return alert("system id required");
+  const r = await fetch(api("/v1/admin/keys"), { method:"POST", headers:adminH(), body:JSON.stringify(body) });
+  const d = await r.json();
+  if (!d.ok) return alert(d.error?.message || "mint failed");
+  $("mintResult").innerHTML = `<div class="keybox">Copy it now, shown once:<br><b>${esc(d.data.key)}</b></div>`;
   loadAdmin(); loadOverview();
 };
 
-// ---- boot ----------------------------------------------------------------------
+// ---------- boot ----------
 (async () => {
-  await loadPrefs();
+  await loadPrefsUI();
+  renderThread(); renderRuleThread();
   loadOverview(); loadWarnings(); pollPulse(); pollFeed();
   setInterval(pollFeed, 5000);
   setInterval(pollPulse, 20000);
   setInterval(() => { loadOverview(); loadWarnings(); }, 60000);
-  setInterval(() => document.querySelectorAll("#feed .row .t").forEach((t) => {
-    const iso = t.closest(".row").title;
-    if (iso) t.textContent = ago(iso) + " ago";
-  }), 30000);
 })();
 </script>
 </body>

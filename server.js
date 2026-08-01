@@ -189,15 +189,29 @@ function normalizeBody(b) {
   return [{ event_id, ts_client, category, action, payload_json: pl }];
 }
 
+// Is this body an OnWindowTransaction payload? It has at least one top-level
+// key whose value is an object of arrays (File -> Table -> [[op,id,data]]).
+function looksLikeTxn(b) {
+  if (!b || typeof b !== "object" || Array.isArray(b) || Array.isArray(b.entries)) return false;
+  return Object.values(b).some((v) =>
+    v && typeof v === "object" && !Array.isArray(v) && Object.values(v).some((rows) => Array.isArray(rows)));
+}
+
+// ONE endpoint, three shapes. FileMaker posts whatever it has to /v1/log/<key>
+// and Clio figures it out: a transaction dump (auto-detected, unpacked, diffed),
+// a chassis batch { entries:[...] }, or one flat { category, action, payload }.
+// This is what lets a client run a single dead-simple script.
 function ingest(req, res) {
+  const systemId = req.system.systemId;
+  if (looksLikeTxn(req.body)) return ingestTxn(req, res);
   const entries = normalizeBody(req.body);
   if (!Array.isArray(entries) || entries.length === 0) {
-    return fail(res, 400, "bad_request", "Body must be { entries: [...] } or one flat { category, action, payload } event.");
+    return fail(res, 400, "bad_request", "Body must be a transaction dump, { entries: [...] }, or one flat { category, action, payload } event.");
   }
   if (entries.length > MAX_BATCH) {
     return fail(res, 413, "batch_too_large", `At most ${MAX_BATCH} entries per batch.`);
   }
-  const result = appendBatch(db, req.system.systemId, entries);
+  const result = appendBatch(db, systemId, entries);
   res.json(ok(result));
 }
 
