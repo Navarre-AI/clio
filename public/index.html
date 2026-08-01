@@ -73,12 +73,14 @@
   @keyframes arrive { from { background:var(--goodbg); } to { background:var(--panel); } }
   .row.watched { box-shadow:inset 3px 0 0 var(--gold); }
   .row.muted { opacity:.42; }
-  .row .t { color:var(--dim); font-size:11.5px; white-space:nowrap; width:62px; flex:none; }
+  .row .t { color:var(--dim); font-size:11.5px; white-space:nowrap; width:46px; flex:none; }
   .row .sys { color:var(--muted); font-size:11.5px; white-space:nowrap; flex:none; width:88px;
     overflow:hidden; text-overflow:ellipsis; }
-  .row .act { font-weight:500; white-space:nowrap; }
-  .row .pay { color:var(--muted); font-family:ui-monospace,Menlo,monospace; font-size:11.5px;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+  .row .main { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-weight:600; }
+  .row .main .did { font-weight:400; color:var(--muted); }
+  .row .act { color:var(--dim); font-size:11px; font-family:ui-monospace,Menlo,monospace;
+    white-space:nowrap; flex:none; }
   .tag { flex:none; font-size:10.5px; font-weight:600; padding:1px 8px; border-radius:10px;
     text-transform:uppercase; letter-spacing:.04em; }
   .tag.err { background:var(--critbg); color:var(--critc); }
@@ -303,35 +305,65 @@ function ago(iso) {
   return Math.round(s / 86400) + "d";
 }
 
-// The human line, fmLog-style: a payload's "message" (or human "action"
-// sentence, or a computed changed-fields summary) beats raw JSON.
-function humanLine(e) {
-  try {
-    const p = JSON.parse(e.payload_json);
-    if (typeof p.message === "string" && p.message) return p.message;
-    if (typeof p.action === "string" && /\s/.test(p.action)) return p.action;
-    if (p.changed && typeof p.changed === "object") {
-      const fields = Object.keys(p.changed).filter((f) => !f.startsWith("z_"));
-      if (fields.length) return `Changed ${fields.join(", ")}` +
-        (p.data?.["z_Modifier"] ? ` (${p.data["z_Modifier"]})` : "");
-    }
-  } catch {}
+// Pick a human label for a record from its snapshot: a name-ish field.
+function displayName(data) {
+  if (!data || typeof data !== "object") return "";
+  for (const k of ["Company Name", "Name", "Full Name", "Title", "Task Name",
+    "Project Name", "Description", "First", "Last", "Note"]) {
+    if (data[k]) return String(data[k]).slice(0, 60);
+  }
+  for (const [k, v] of Object.entries(data)) {
+    if (/id|^z_|TS$|date/i.test(k)) continue;
+    if (typeof v === "string" && v && v.length < 50) return v;
+  }
   return "";
+}
+
+// Turn any entry into { text, who, mute }. Every row reads as a sentence;
+// raw JSON is only ever the hover title.
+function humanLine(e) {
+  let p = {};
+  try { p = JSON.parse(e.payload_json); } catch { return { text: e.action, who: "", mute: false }; }
+  const who = p.account_name || (p.data && p.data.z_Modifier) || "";
+
+  if (typeof p.message === "string" && p.message) return { text: p.message, who, mute: false };
+
+  // OnWindowTransaction entries: action = system.Table.op
+  const parts = e.action.split(".");
+  if (parts.length >= 3 && p.table) {
+    const op = parts[parts.length - 1];
+    const name = displayName(p.data);
+    const label = name ? `${p.table} "${name}"` : `${p.table} #${p.record_id}`;
+    let text;
+    if (p.changed && typeof p.changed === "object") {
+      const fs = Object.keys(p.changed).filter((f) => !/^z_/.test(f));
+      text = fs.length ? `changed ${fs.join(", ")} on ${label}` : `touched ${label}`;
+    } else {
+      text = `${op === "new" ? "created" : op === "deleted" ? "deleted" : "edited"} ${label}`;
+    }
+    return { text, who, mute: p.table === "fmLog" }; // don't surface the logger logging itself
+  }
+
+  // fmLog-style human sentence carried in the action, or a flat "view record"
+  if (/\s/.test(e.action)) return { text: e.action, who, mute: false };
+  return { text: e.action, who, mute: false };
 }
 
 function rowHtml(e, fresh) {
   const tag = classify(e.action);
+  const h = humanLine(e);
+  const sysMuted = e.system_id === "clio"; // Clio's own scans/key mints: plumbing
+  const muted = h.mute || sysMuted || matchesAny(e.action, prefs.mute);
   const watched = matchesAny(e.action, prefs.watch);
-  const muted = matchesAny(e.action, prefs.mute);
-  const line = humanLine(e);
+  const main = h.who ? `${esc(h.who)} <span class="did">${esc(h.text)}</span>` : esc(h.text);
   return `<div class="row ${fresh ? "fresh" : ""} ${watched ? "watched" : ""} ${muted ? "muted" : ""}"
       data-sys="${esc(e.system_id)}" data-act="${esc(e.action.toLowerCase())}" data-muted="${muted ? 1 : 0}"
-      title="${esc(e.ts_server)}">
-    <span class="t">${ago(e.ts_server)} ago</span>
+      title="${esc(e.payload_json)}">
+    <span class="t">${ago(e.ts_server)}</span>
     <span class="tag ${tag}">${tag === "other" ? "·" : tag}</span>
     <span class="sys">${esc(e.system_id)}</span>
+    <span class="main">${main}</span>
     <span class="act">${esc(e.action)}</span>
-    <span class="pay" title="${esc(e.payload_json)}">${esc(line || e.payload_json)}</span>
   </div>`;
 }
 
