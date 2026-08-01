@@ -210,22 +210,30 @@ app.post("/v1/log/:key", keyAuth, ingest); // key-in-URL: zero headers from File
 function normalizeTxn(b, systemId) {
   const entries = [];
   if (!b || typeof b !== "object" || Array.isArray(b)) return null;
+  // FileMaker may fold stray scalar keys alongside the transaction (account_name,
+  // and leftover empty action/category/payload/table). Use account_name as the
+  // who; ignore the rest. Only object-valued top-level keys are File envelopes.
+  const account = typeof b.account_name === "string" && b.account_name ? b.account_name : null;
+  let sawFile = false;
   for (const [file, tables] of Object.entries(b)) {
-    if (!tables || typeof tables !== "object" || Array.isArray(tables)) return null;
+    if (!tables || typeof tables !== "object" || Array.isArray(tables)) continue; // skip scalars
     for (const [table, rows] of Object.entries(tables)) {
-      if (!Array.isArray(rows)) return null;
+      if (!Array.isArray(rows)) continue;
+      sawFile = true;
       for (const r of rows) {
         if (!Array.isArray(r)) continue;
         const [op, recId, data] = r;
+        const payload = { file, table, record_id: recId, data: data ?? "" };
+        if (account && !(data && typeof data === "object" && data.z_Modifier)) payload.account_name = account;
         entries.push({
           category: `${systemId}.data`,
           action: `${systemId}.${table}.${String(op).toLowerCase()}`,
-          payload_json: { file, table, record_id: recId, data: data ?? "" },
+          payload_json: payload,
         });
       }
     }
   }
-  return entries;
+  return sawFile ? entries : null;
 }
 
 // The chain holds each record's previous full snapshot, so Clio can say
