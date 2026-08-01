@@ -78,8 +78,8 @@ function selfLog(event, fields = {}) {
 // ---- auth middlewares -------------------------------------------------------
 
 function keyAuth(req, res, next) {
-  const key = bearer(req);
-  if (!key) return fail(res, 401, "unauthorized", "Bearer API key required.");
+  const key = req.params?.key || bearer(req) || (req.query.key ? String(req.query.key) : "");
+  if (!key) return fail(res, 401, "unauthorized", "API key required (Bearer header, URL path, or ?key=).");
   const row = db.prepare(
     "SELECT id, system_id, label FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL"
   ).get(sha256Hex(key));
@@ -180,14 +180,15 @@ app.get("/v1/info", (_req, res) => {
 function normalizeBody(b) {
   if (Array.isArray(b?.entries)) return b.entries;
   if (!b || (!b.action && !b.category)) return null;
-  const { category, action, payload, payload_json, event_id, ts_client, ...rest } = b;
+  const { category, action, payload, payload_json, event_id, ts_client,
+    ["server-side"]: _transport, ...rest } = b; // "server-side" is FM transport metadata, not payload
   let pl = payload_json ?? payload ?? {};
   if (typeof pl === "string") { try { pl = JSON.parse(pl); } catch { pl = { text: pl }; } }
   if (pl && typeof pl === "object" && !Array.isArray(pl)) pl = { ...pl, ...rest };
   return [{ event_id, ts_client, category, action, payload_json: pl }];
 }
 
-app.post("/v1/log", keyAuth, (req, res) => {
+function ingest(req, res) {
   const entries = normalizeBody(req.body);
   if (!Array.isArray(entries) || entries.length === 0) {
     return fail(res, 400, "bad_request", "Body must be { entries: [...] } or one flat { category, action, payload } event.");
@@ -197,7 +198,10 @@ app.post("/v1/log", keyAuth, (req, res) => {
   }
   const result = appendBatch(db, req.system.systemId, entries);
   res.json(ok(result));
-});
+}
+
+app.post("/v1/log", keyAuth, ingest);
+app.post("/v1/log/:key", keyAuth, ingest); // key-in-URL: zero headers from FileMaker
 
 // ---- chain reads ------------------------------------------------------------
 
