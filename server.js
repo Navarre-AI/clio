@@ -129,7 +129,7 @@ app.use((req, res, next) => {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate"); // FM web viewers cache aggressively
   next();
 });
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "25mb" })); // a Delete All / big Replace arrives as ONE OnWindowTransaction payload
 
 // Password gate for the UI surface only. Machine routes (/v1, /health) use
 // Bearer auth and must stay reachable by shippers and FileMaker scripts.
@@ -202,6 +202,81 @@ function ingest(req, res) {
 
 app.post("/v1/log", keyAuth, ingest);
 app.post("/v1/log/:key", keyAuth, ingest); // key-in-URL: zero headers from FileMaker
+
+// OnWindowTransaction ingest: FileMaker POSTs the trigger's parameter
+// UNTOUCHED — { "File" : { "Table" : [ [ "Op", recId, contextFieldValue ], ... ] } }.
+// Clio does the unpacking: one chain entry per record op, in payload order.
+// action = <system>.<Table>.<op>, payload = { file, table, record_id, data }.
+function normalizeTxn(b, systemId) {
+  const entries = [];
+  if (!b || typeof b !== "object" || Array.isArray(b)) return null;
+  for (const [file, tables] of Object.entries(b)) {
+    if (!tables || typeof tables !== "object" || Array.isArray(tables)) return null;
+    for (const [table, rows] of Object.entries(tables)) {
+      if (!Array.isArray(rows)) return null;
+      for (const r of rows) {
+        if (!Array.isArray(r)) continue;
+        const [op, recId, data] = r;
+        entries.push({
+          category: `${systemId}.data`,
+          action: `${systemId}.${table}.${String(op).toLowerCase()}`,
+          payload_json: { file, table, record_id: recId, data: data ?? "" },
+        });
+      }
+    }
+  }
+  return entries;
+}
+
+// The chain holds each record's previous full snapshot, so Clio can say
+// exactly which fields an edit touched: diff the incoming snapshot against
+// the last one for the same (table, record_id). FileMaker stays dumb.
+function previousData(systemId, table, recId) {
+  const row = db.prepare(
+    `SELECT payload_json FROM log_entries
+     WHERE system_id = ? AND json_extract(payload_json, '$.table') = ?
+       AND json_extract(payload_json, '$.record_id') = ?
+     ORDER BY seq DESC LIMIT 1`
+  ).get(systemId, table, recId);
+  if (!row) return null;
+  try {
+    const p = JSON.parse(row.payload_json);
+    return p.data && typeof p.data === "object" ? p.data : null;
+  } catch { return null; }
+}
+
+function diffRecords(prev, next) {
+  const changed = {};
+  for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) {
+    if (JSON.stringify(prev[k]) !== JSON.stringify(next[k])) {
+      changed[k] = { from: prev[k] ?? null, to: next[k] ?? null };
+    }
+  }
+  return changed;
+}
+
+function ingestTxn(req, res) {
+  const systemId = req.system.systemId;
+  const entries = normalizeTxn(req.body, systemId);
+  if (entries === null) {
+    return fail(res, 400, "bad_request", "Body must be the OnWindowTransaction JSON, posted as-is.");
+  }
+  if (entries.length === 0) return res.json(ok({ accepted: 0, duplicates: 0, head: head(db, systemId) })); // Find-mode empty firing
+  const latestInBatch = new Map();
+  for (const e of entries) {
+    const p = e.payload_json;
+    if (!p.data || typeof p.data !== "object") continue;
+    const k = `${p.table}#${p.record_id}`;
+    const prev = latestInBatch.get(k) ?? previousData(systemId, p.table, p.record_id);
+    if (prev && e.action.endsWith(".modified")) p.changed = diffRecords(prev, p.data);
+    latestInBatch.set(k, p.data);
+  }
+  const result = appendBatch(db, systemId, entries);
+  res.json(ok(result));
+}
+
+app.post("/v1/txn", keyAuth, ingestTxn);
+app.post("/v1/txn/:key", keyAuth, ingestTxn);
 
 // ---- chain reads ------------------------------------------------------------
 
