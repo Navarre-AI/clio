@@ -1,216 +1,486 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clio</title>
 <style>
-  :root {
-    --bg: #faf8f4; --card: #ffffff; --ink: #2b2721; --muted: #8a8172;
-    --line: #e7e1d6; --gold: #b8860b; --ok: #3d7a4a; --warn: #b05a1d; --crit: #a32c2c;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-         background: var(--bg); color: var(--ink); }
-  header { padding: 22px 28px 14px; border-bottom: 1px solid var(--line);
-           display: flex; align-items: baseline; gap: 14px; }
-  header h1 { margin: 0; font-size: 22px; letter-spacing: 0.5px; }
-  header .tag { color: var(--muted); font-size: 13px; }
-  main { max-width: 1060px; margin: 0 auto; padding: 20px 28px 60px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.2px;
-       color: var(--muted); margin: 28px 0 10px; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
-  .card .sys { font-weight: 600; font-size: 16px; }
-  .card .hash { font-family: ui-monospace, Menlo, monospace; font-size: 11px;
-                color: var(--muted); word-break: break-all; margin: 6px 0; }
-  .card .meta { color: var(--muted); font-size: 13px; }
-  .badge { display: inline-block; border-radius: 20px; padding: 1px 10px; font-size: 12px; font-weight: 600; }
-  .b-ok { background: #e6f0e8; color: var(--ok); }
-  .b-bad { background: #f7e2e2; color: var(--crit); }
-  .b-info { background: #eee9dd; color: var(--muted); }
-  .b-warn { background: #f7ead9; color: var(--warn); }
-  .b-critical { background: #f7e2e2; color: var(--crit); }
-  button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 7px;
-           border: 1px solid var(--line); background: var(--card); cursor: pointer; }
-  button:hover { border-color: var(--gold); }
-  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  .warning { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px;
-             background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
-  .warning .body { flex: 1; }
-  .warning .title { font-weight: 600; }
-  .warning .detail { font-size: 13px; color: var(--muted); }
-  .quiet { color: var(--muted); font-size: 14px; padding: 8px 2px; }
-  table { border-collapse: collapse; width: 100%; background: var(--card);
-          border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 13px; }
-  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { background: #f3efe7; font-weight: 600; }
-  td.mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; word-break: break-all; }
-  .controls { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-  select, input[type=text] { font: inherit; font-size: 13px; padding: 5px 8px;
-    border: 1px solid var(--line); border-radius: 7px; background: var(--card); }
-  #askthread { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
-  .msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; }
-  .msg.user { align-self: flex-end; background: var(--ink); color: var(--bg); }
-  .msg.clio { align-self: flex-start; background: var(--card); border: 1px solid var(--line); }
-  .msg table { margin-top: 8px; }
-  .askrow { display: flex; gap: 8px; }
-  .askrow input { flex: 1; }
-  .scroll { overflow-x: auto; }
+  /* Same warm-minimal family as Pythia: paper neutrals, terracotta accent,
+     gold reserved for the brand and the pulse. Dark = warm charcoal. */
+  :root { --bg:#faf9f5; --panel:#ffffff; --panel2:#f1eee7; --line:#e8e4da; --ink:#211f1a;
+    --muted:#6f6a5f; --dim:#a39d8f; --accent:#c15f3c; --accent2:#d97757; --gold:#b8923e;
+    --side:#f5f3ec; --good:#2e7d52; --goodbg:#e7f2ec; --warnc:#a05a1a; --warnbg:#f7ead9;
+    --critc:#a32c2c; --critbg:#f7e2e2; --offbg:#f1eee7;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif; }
+  html.dark { --bg:#1b1915; --panel:#242119; --panel2:#2f2b20; --line:#3c3628; --ink:#ece8df;
+    --muted:#a9a292; --dim:#7c7565; --accent:#d97757; --accent2:#e08b6d; --gold:#c9a24b;
+    --side:#211e17; --good:#7dbd9a; --goodbg:#22352a; --warnc:#e0a366; --warnbg:#3a2e1d;
+    --critc:#e08a8a; --critbg:#3a2222; --offbg:#2b2720; }
+  * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:var(--dim) transparent; }
+  html, body { margin:0; height:100%; }
+  body { display:flex; height:100vh; background:var(--bg); color:var(--ink);
+    font:14.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  button { font:inherit; cursor:pointer; border:0; background:none; color:inherit; }
+
+  .side { width:230px; flex:none; background:linear-gradient(180deg,var(--side) 55%,var(--bg));
+    border-right:1px solid var(--line); display:flex; flex-direction:column; }
+  .side-top { padding:16px 15px 12px; }
+  .brand { font-family:var(--serif); font-size:20px; font-weight:600; letter-spacing:.03em;
+    display:flex; align-items:center; gap:9px; }
+  .brand svg { width:24px; height:24px; flex:none; }
+  .side-list { flex:1; overflow-y:auto; padding:6px 8px; }
+  .navitem { display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:9px;
+    color:var(--muted); cursor:pointer; font-size:13.5px; }
+  .navitem:hover { background:var(--panel); color:var(--ink); }
+  .navitem.on { background:var(--panel2); color:var(--ink); box-shadow:inset 3px 0 0 var(--gold); font-weight:500; }
+  .navitem .cnt { margin-left:auto; font-size:11.5px; background:var(--warnbg); color:var(--warnc);
+    border-radius:12px; padding:0 8px; }
+  .side-foot { padding:10px 12px 14px; border-top:1px solid var(--line); color:var(--dim); font-size:12px; }
+  .side-foot .frow { display:flex; align-items:center; gap:8px; padding:4px 0; }
+  .side-foot button { color:var(--muted); padding:2px 4px; border-radius:6px; }
+  .side-foot button:hover { color:var(--ink); background:var(--panel); }
+
+  .main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .view { flex:1; overflow-y:auto; padding:22px 28px 40px; display:none; }
+  .view.on { display:block; }
+  .vhead { display:flex; align-items:baseline; gap:12px; margin:0 0 14px; }
+  .vhead h1 { font-family:var(--serif); font-size:21px; font-weight:600; margin:0; }
+  .vhead .sub { color:var(--muted); font-size:13px; }
+  .vhead .right { margin-left:auto; display:flex; gap:8px; align-items:center; }
+
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .btn { padding:6px 13px; border-radius:8px; border:1px solid var(--line); background:var(--panel); font-size:13px; }
+  .btn:hover { border-color:var(--accent2); }
+  .btn.primary { background:linear-gradient(135deg,var(--accent2),var(--accent)); color:#fff; border:0; }
+  .btn.primary:hover { filter:brightness(1.07); }
+  input[type=text], input[type=number], select, textarea { font:inherit; font-size:13px; color:var(--ink);
+    padding:6px 9px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+  textarea { width:100%; min-height:64px; resize:vertical; }
+
+  /* Pulse strip */
+  .pulse { display:flex; gap:13px; align-items:flex-start; background:linear-gradient(135deg,var(--panel),var(--panel2));
+    border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:16px; }
+  .pulse svg { width:26px; height:26px; flex:none; margin-top:2px; }
+  .pulse .ptext { font-size:14.5px; }
+  .pulse .pmeta { color:var(--dim); font-size:11.5px; margin-top:4px; }
+
+  /* Live feed */
+  .feedbar { display:flex; gap:8px; margin-bottom:10px; align-items:center; flex-wrap:wrap; }
+  .feed { display:flex; flex-direction:column; gap:6px; }
+  .row { display:flex; gap:10px; align-items:baseline; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:8px 12px; font-size:13px; animation:none; }
+  .row.fresh { animation:arrive .8s ease; }
+  @keyframes arrive { from { background:var(--goodbg); } to { background:var(--panel); } }
+  .row.watched { box-shadow:inset 3px 0 0 var(--gold); }
+  .row.muted { opacity:.42; }
+  .row .t { color:var(--dim); font-size:11.5px; white-space:nowrap; width:62px; flex:none; }
+  .row .sys { color:var(--muted); font-size:11.5px; white-space:nowrap; flex:none; width:88px;
+    overflow:hidden; text-overflow:ellipsis; }
+  .row .act { font-weight:500; white-space:nowrap; }
+  .row .pay { color:var(--muted); font-family:ui-monospace,Menlo,monospace; font-size:11.5px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+  .tag { flex:none; font-size:10.5px; font-weight:600; padding:1px 8px; border-radius:10px;
+    text-transform:uppercase; letter-spacing:.04em; }
+  .tag.err { background:var(--critbg); color:var(--critc); }
+  .tag.del { background:var(--warnbg); color:var(--warnc); }
+  .tag.exp { background:var(--offbg); color:var(--accent); }
+  .tag.adm { background:var(--offbg); color:var(--gold); }
+  .tag.new { background:var(--goodbg); color:var(--good); }
+  .tag.mod, .tag.other { background:var(--panel2); color:var(--dim); }
+
+  /* Systems */
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:12px; }
+  .scard .sys { font-family:var(--serif); font-size:17px; font-weight:600; }
+  .scard .where { color:var(--muted); font-size:12.5px; margin:2px 0 6px; }
+  .scard .hash { font-family:ui-monospace,Menlo,monospace; font-size:10.5px; color:var(--dim); word-break:break-all; }
+  .scard .meta { color:var(--muted); font-size:12.5px; margin:6px 0 10px; }
+  .badge { display:inline-block; border-radius:12px; padding:1px 9px; font-size:11.5px; font-weight:600; }
+  .b-ok { background:var(--goodbg); color:var(--good); }
+  .b-bad { background:var(--critbg); color:var(--critc); }
+  .b-dim { background:var(--panel2); color:var(--dim); }
+  .b-warn { background:var(--warnbg); color:var(--warnc); }
+  .b-info { background:var(--panel2); color:var(--muted); }
+  .b-critical { background:var(--critbg); color:var(--critc); }
+
+  .warning { display:flex; gap:12px; align-items:flex-start; background:var(--panel);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:8px; }
+  .warning .title { font-weight:600; }
+  .warning .detail { font-size:13px; color:var(--muted); }
+  .warning .body { flex:1; }
+
+  .quiet { color:var(--dim); font-size:13.5px; padding:10px 2px; }
+
+  /* Ask */
+  .thread { display:flex; flex-direction:column; gap:10px; max-width:820px; }
+  .msg { max-width:88%; padding:10px 15px; border-radius:14px; white-space:pre-wrap; }
+  .msg.user { align-self:flex-end; background:linear-gradient(135deg,var(--accent2),var(--accent)); color:#fff; }
+  .msg.clio { align-self:flex-start; background:var(--panel); border:1px solid var(--line); }
+  .askrow { display:flex; gap:8px; max-width:820px; margin-top:12px; }
+  .askrow input { flex:1; padding:9px 13px; border-radius:10px; }
+  .msg table { border-collapse:collapse; margin-top:8px; font-size:12.5px; }
+  .msg th, .msg td { text-align:left; padding:4px 9px; border-bottom:1px solid var(--line); }
+  .msg th { color:var(--muted); font-weight:600; }
+  .scroll { overflow-x:auto; }
+
+  /* Settings overlay */
+  .overlay { position:fixed; inset:0; background:rgba(20,18,14,.45); display:none;
+    align-items:flex-start; justify-content:center; padding:6vh 16px; z-index:50; }
+  .overlay.on { display:flex; }
+  .panel { background:var(--bg); border:1px solid var(--line); border-radius:14px;
+    width:min(680px,95vw); max-height:86vh; display:flex; flex-direction:column; }
+  .p-head { display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line);
+    font-family:var(--serif); font-size:17px; font-weight:600; }
+  .p-head button { margin-left:auto; color:var(--dim); font-size:18px; }
+  .p-list { overflow-y:auto; padding:14px 18px 22px; display:flex; flex-direction:column; gap:12px; }
+  .setcard { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px 15px; }
+  .setcard h3 { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+  .setrow { display:flex; gap:10px; align-items:center; margin:6px 0; flex-wrap:wrap; }
+  .setrow label { font-size:13px; color:var(--muted); width:150px; flex:none; }
+  .setrow input { width:110px; }
+  .hint { color:var(--dim); font-size:12px; margin-top:4px; }
+  table.admin { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.admin th, table.admin td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); }
+  table.admin th { color:var(--muted); font-weight:600; }
+  .keybox { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--panel2);
+    border-radius:8px; padding:8px 10px; word-break:break-all; margin-top:8px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Clio</h1>
-  <span class="tag">the historian does not take edits from the people she is writing about</span>
-</header>
-<main>
-  <h2>Systems</h2>
-  <div id="systems" class="cards"><div class="quiet">Loading…</div></div>
+<aside class="side">
+  <div class="side-top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22"
+        stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Clio
+    </div>
+  </div>
+  <div class="side-list">
+    <div class="navitem on" data-v="pulse"><span>◉</span> Pulse</div>
+    <div class="navitem" data-v="systems"><span>▦</span> Systems</div>
+    <div class="navitem" data-v="warnings"><span>▲</span> Warnings <span class="cnt" id="warnCnt" style="display:none"></span></div>
+    <div class="navitem" data-v="ask"><span>❯</span> Ask the logs</div>
+  </div>
+  <div class="side-foot">
+    <div class="frow"><button id="settingsBtn">⚙ Settings</button><button id="themeBtn" title="Toggle theme">◐</button></div>
+    <div class="frow" id="footInfo"></div>
+  </div>
+</aside>
 
-  <h2>Warnings <button id="scanBtn" style="float:right" title="Run the pattern scan now">Scan now</button></h2>
-  <div id="warnings"><div class="quiet">Loading…</div></div>
+<main class="main">
+  <!-- Pulse -->
+  <div class="view on" id="v-pulse">
+    <div class="vhead"><h1>Pulse</h1><span class="sub">the record, live</span>
+      <div class="right"><label style="font-size:12px;color:var(--dim)"><input type="checkbox" id="showMuted"> show muted</label></div>
+    </div>
+    <div class="pulse">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22"
+        stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><div class="ptext" id="pulseText">Reading the room…</div>
+        <div class="pmeta" id="pulseMeta"></div></div>
+    </div>
+    <div class="feedbar">
+      <input type="text" id="feedFilter" placeholder="filter actions and payloads…" style="width:260px">
+      <select id="feedSystem"><option value="">all systems</option></select>
+      <span class="quiet" id="feedStatus"></span>
+    </div>
+    <div class="feed" id="feed"><div class="quiet">Waiting for the first entries…</div></div>
+  </div>
 
-  <h2>Ask the logs</h2>
-  <div id="askwrap">
-    <div id="askthread"></div>
+  <!-- Systems -->
+  <div class="view" id="v-systems">
+    <div class="vhead"><h1>Systems</h1><span class="sub">one chain per database</span></div>
+    <div class="cards" id="systems"></div>
+  </div>
+
+  <!-- Warnings -->
+  <div class="view" id="v-warnings">
+    <div class="vhead"><h1>Warnings</h1>
+      <div class="right"><button class="btn" id="scanBtn">Scan now</button></div></div>
+    <div id="warnings"></div>
+  </div>
+
+  <!-- Ask -->
+  <div class="view" id="v-ask">
+    <div class="vhead"><h1>Ask the logs</h1><span class="sub">every number comes from a real query</span></div>
+    <div class="thread" id="thread"></div>
     <div class="askrow">
-      <input type="text" id="askInput" placeholder="Who logged the most failed logins this week?">
-      <button class="primary" id="askBtn">Ask</button>
+      <input type="text" id="askInput" placeholder="Who deleted invoices this week? Any weekend activity?">
+      <button class="btn primary" id="askBtn">Ask</button>
     </div>
-  </div>
-
-  <h2>Log tail</h2>
-  <div class="controls">
-    <select id="logSystem"></select>
-    <input type="text" id="logFilter" placeholder="filter payloads…">
-    <button id="logRefresh">Refresh</button>
-  </div>
-  <div id="logs" class="scroll"><div class="quiet">Pick a system.</div></div>
-
-  <h2>Systems &amp; keys (admin)</h2>
-  <div id="adminLocked" class="controls">
-    <input type="text" id="adminToken" placeholder="admin token">
-    <button id="adminUnlock">Unlock</button>
-  </div>
-  <div id="adminPanel" style="display:none">
-    <div id="adminSystems" class="scroll"></div>
-    <h2 style="margin-top:18px">Register a system / mint a key</h2>
-    <div class="controls">
-      <input type="text" id="regId" placeholder="system id (e.g. crm)" style="width:140px">
-      <input type="text" id="regLabel" placeholder="label" style="width:150px">
-      <input type="text" id="regServer" placeholder="FM server (fm.acme.com)" style="width:190px">
-      <input type="text" id="regFile" placeholder="file (CRM.fmp12)" style="width:150px">
-      <button class="primary" id="regMint">Register + mint key</button>
-    </div>
-    <div id="mintResult"></div>
   </div>
 </main>
+
+<!-- Settings -->
+<div class="overlay" id="settingsOverlay">
+  <div class="panel">
+    <div class="p-head">Settings <button id="settingsClose">✕</button></div>
+    <div class="p-list">
+      <div class="setcard">
+        <h3>Watchdog</h3>
+        <div class="setrow"><label>UTC offset (hours)</label><input type="number" id="prefTz" step="1"></div>
+        <div class="setrow"><label>Business hours</label><input type="text" id="prefHours" placeholder="07-19"></div>
+        <div class="setrow"><label>Business days</label><input type="text" id="prefDays" placeholder="1-5"></div>
+        <div class="setrow"><label>Big export rows</label><input type="number" id="prefExport"></div>
+        <div class="hint">Activity outside these windows counts as off-hours. Days: 0 = Sunday.</div>
+      </div>
+      <div class="setcard">
+        <h3>Watch list</h3>
+        <textarea id="prefWatch" placeholder="one pattern per line, e.g.&#10;.deleted&#10;login.failed&#10;admin."></textarea>
+        <div class="hint">Entries matching these light up gold in the feed.</div>
+      </div>
+      <div class="setcard">
+        <h3>Mute list</h3>
+        <textarea id="prefMute" placeholder="one pattern per line, e.g.&#10;heartbeat&#10;scan.run"></textarea>
+        <div class="hint">Matching entries dim (or hide, unless "show muted" is on). Still logged, still chained.</div>
+      </div>
+      <div class="setrow"><button class="btn primary" id="prefSave">Save</button><span class="quiet" id="prefStatus"></span></div>
+
+      <div class="setcard" id="adminCard">
+        <h3>Systems &amp; keys (admin)</h3>
+        <div id="adminLocked" class="setrow">
+          <input type="text" id="adminToken" placeholder="admin token" style="width:260px">
+          <button class="btn" id="adminUnlock">Unlock</button>
+        </div>
+        <div id="adminPanel" style="display:none">
+          <div class="scroll" id="adminSystems"></div>
+          <div class="setrow" style="margin-top:10px">
+            <input type="text" id="regId" placeholder="system id" style="width:110px">
+            <input type="text" id="regLabel" placeholder="label" style="width:120px">
+            <input type="text" id="regServer" placeholder="FM server" style="width:160px">
+            <input type="text" id="regFile" placeholder="file" style="width:120px">
+            <button class="btn primary" id="regMint">Register + mint</button>
+          </div>
+          <div id="mintResult"></div>
+        </div>
+      </div>
+      <div class="setcard"><h3>About</h3><div class="quiet" id="aboutBox"></div></div>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 const j = async (url, opts) => (await fetch(url, opts)).json();
-const post = (url, body) => j(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
-let AI = false;
+const post = (url, body) => j(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body || {}) });
 
+// Theme
+if (localStorage.clio_theme === "dark" || (!localStorage.clio_theme && matchMedia("(prefers-color-scheme: dark)").matches))
+  document.documentElement.classList.add("dark");
+$("themeBtn").onclick = () => {
+  const d = document.documentElement.classList.toggle("dark");
+  localStorage.clio_theme = d ? "dark" : "light";
+};
+
+// Nav
+document.querySelectorAll(".navitem").forEach((n) => n.onclick = () => {
+  document.querySelectorAll(".navitem").forEach((x) => x.classList.toggle("on", x === n));
+  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("on", v.id === "v-" + n.dataset.v));
+});
+
+// ---- prefs + classification --------------------------------------------------
+let prefs = { watch:[], mute:[] };
+function classify(action) {
+  if (/error|fail|denied|invalid|tamper/i.test(action)) return "err";
+  if (/\.deleted?$/i.test(action)) return "del";
+  if (/export|print|pdf|save/i.test(action)) return "exp";
+  if (/admin|key_|privil|account/i.test(action)) return "adm";
+  if (/\.new$|creat/i.test(action)) return "new";
+  if (/modif/i.test(action)) return "mod";
+  return "other";
+}
+const matchesAny = (s, pats) => pats.some((p) => p && s.toLowerCase().includes(p.toLowerCase()));
+
+// ---- pulse + live feed ---------------------------------------------------------
+let latestTs = null;
+const seen = new Set();
+
+function ago(iso) {
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  if (s < 60) return Math.max(1, Math.round(s)) + "s";
+  if (s < 3600) return Math.round(s / 60) + "m";
+  if (s < 86400) return Math.round(s / 3600) + "h";
+  return Math.round(s / 86400) + "d";
+}
+
+function rowHtml(e, fresh) {
+  const tag = classify(e.action);
+  const watched = matchesAny(e.action, prefs.watch);
+  const muted = matchesAny(e.action, prefs.mute);
+  return `<div class="row ${fresh ? "fresh" : ""} ${watched ? "watched" : ""} ${muted ? "muted" : ""}"
+      data-sys="${esc(e.system_id)}" data-act="${esc(e.action.toLowerCase())}" data-muted="${muted ? 1 : 0}"
+      title="${esc(e.ts_server)}">
+    <span class="t">${ago(e.ts_server)} ago</span>
+    <span class="tag ${tag}">${tag === "other" ? "·" : tag}</span>
+    <span class="sys">${esc(e.system_id)}</span>
+    <span class="act">${esc(e.action)}</span>
+    <span class="pay">${esc(e.payload_json)}</span>
+  </div>`;
+}
+
+function applyFeedFilters() {
+  const q = $("feedFilter").value.trim().toLowerCase();
+  const sys = $("feedSystem").value;
+  const showMuted = $("showMuted").checked;
+  document.querySelectorAll("#feed .row").forEach((r) => {
+    const hit = (!q || r.textContent.toLowerCase().includes(q)) &&
+      (!sys || r.dataset.sys === sys) &&
+      (showMuted || r.dataset.muted !== "1");
+    r.style.display = hit ? "" : "none";
+  });
+}
+["feedFilter", "feedSystem", "showMuted"].forEach((id) => $(id).oninput = applyFeedFilters);
+
+async function pollFeed() {
+  try {
+    const r = await j("/api/logs?limit=60" + (latestTs ? "&since=" + encodeURIComponent(latestTs) : ""));
+    if (r.entries.length) {
+      if (latestTs === null) $("feed").innerHTML = "";
+      const html = r.entries.map((e) => {
+        const k = e.system_id + "#" + e.seq;
+        if (seen.has(k)) return "";
+        seen.add(k);
+        return rowHtml(e, latestTs !== null);
+      }).join("");
+      $("feed").insertAdjacentHTML("afterbegin", html);
+      latestTs = r.latest_ts || latestTs;
+      const rows = document.querySelectorAll("#feed .row");
+      for (let i = 250; i < rows.length; i++) rows[i].remove();
+      applyFeedFilters();
+    }
+    $("feedStatus").textContent = "live · " + new Date().toLocaleTimeString();
+  } catch { $("feedStatus").textContent = "reconnecting…"; }
+}
+
+async function pollPulse() {
+  try {
+    const p = await j("/api/pulse");
+    if (p.summary) {
+      $("pulseText").textContent = p.summary;
+      $("pulseMeta").textContent = `as of ${new Date(p.generated_at).toLocaleTimeString()} · ` +
+        `${p.stats.events_last_24h} events / 24h · ${p.stats.open_warnings} open warning${p.stats.open_warnings === 1 ? "" : "s"}`;
+    }
+  } catch {}
+}
+
+// ---- systems -------------------------------------------------------------------
 async function loadOverview() {
   const o = await j("/api/overview");
-  AI = o.ai;
-  const el = $("systems");
-  if (!o.systems.length) {
-    el.innerHTML = '<div class="quiet">Nothing logged yet. Point a system at POST /v1/log and the chain starts itself.</div>';
-    return;
-  }
-  el.innerHTML = o.systems.map((s) => `
-    <div class="card" data-sys="${esc(s.system_id)}">
-      <div class="sys">${esc(s.system_id)}
+  $("footInfo").textContent = `v${o.version} · AI ${o.ai ? "on" : "off"}`;
+  $("aboutBox").innerHTML = `Clio v${esc(o.version)} · AI ${o.ai ? "on" : "off"} · ${location.origin}<br>` +
+    `Append-only, hash-chained, anchored in your own FileMaker file.`;
+  const sel = $("feedSystem");
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">all systems</option>' +
+    o.systems.map((s) => `<option ${cur === s.system_id ? "selected" : ""}>${esc(s.system_id)}</option>`).join("");
+  $("systems").innerHTML = o.systems.length ? o.systems.map((s) => `
+    <div class="card scard">
+      <div class="sys">${esc(s.label || s.system_id)}
         ${s.open_warnings ? `<span class="badge b-warn">${s.open_warnings} open</span>` : ""}
-        <span class="badge verify-badge b-info">unverified</span></div>
-      ${s.fm_server || s.fm_file ? `<div class="meta">${esc(s.fm_file || "?")} on ${esc(s.fm_server || "?")}</div>` : ""}
-      <div class="hash">head #${s.seq} · ${esc(s.entry_hash || "")}</div>
-      <div class="meta">${s.entry_count} entries · last ${esc((s.last_ts_server || "").replace("T", " ").slice(0, 19))}</div>
-      <div style="margin-top:8px"><button onclick="verify('${esc(s.system_id)}', this)">Verify chain</button></div>
-    </div>`).join("");
-  const sel = $("logSystem");
-  sel.innerHTML = o.systems.map((s) => `<option>${esc(s.system_id)}</option>`).join("");
-  loadLogs();
+        <span class="badge verify-badge b-dim">unverified</span></div>
+      <div class="where">${s.fm_file || s.fm_server ? esc(s.fm_file || "?") + " on " + esc(s.fm_server || "?") : esc(s.system_id)}</div>
+      <div class="hash">#${s.seq} · ${esc(s.entry_hash || "")}</div>
+      <div class="meta">${s.entry_count} entries · last ${s.last_ts_server ? ago(s.last_ts_server) + " ago" : "never"}</div>
+      <button class="btn" onclick="verify('${esc(s.system_id)}', this)">Verify chain</button>
+    </div>`).join("")
+    : '<div class="quiet">Nothing logged yet. Point a system at POST /v1/log and the chain starts itself.</div>';
 }
 
 async function verify(sys, btn) {
   btn.textContent = "Verifying…";
   const v = await j("/api/verify?system_id=" + encodeURIComponent(sys));
-  const badge = btn.closest(".card").querySelector(".verify-badge");
+  const badge = btn.closest(".scard").querySelector(".verify-badge");
   badge.className = "badge verify-badge " + (v.valid ? "b-ok" : "b-bad");
-  badge.textContent = v.valid ? `intact (${v.checked} checked)` : `BROKEN at #${v.first_bad_seq}`;
+  badge.textContent = v.valid ? `intact · ${v.checked} checked` : `BROKEN at #${v.first_bad_seq}`;
   btn.textContent = "Verify chain";
 }
 
+// ---- warnings ------------------------------------------------------------------
 async function loadWarnings() {
   const w = await j("/api/warnings");
-  const el = $("warnings");
-  if (!w.warnings.length) { el.innerHTML = '<div class="quiet">No open warnings. Quiet is good.</div>'; return; }
-  el.innerHTML = w.warnings.map((x) => `
+  const cnt = $("warnCnt");
+  cnt.style.display = w.warnings.length ? "" : "none";
+  cnt.textContent = w.warnings.length;
+  $("warnings").innerHTML = w.warnings.length ? w.warnings.map((x) => `
     <div class="warning">
       <span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span>
       <div class="body">
-        <div class="title">${esc(x.title)} <span class="quiet">· ${esc(x.system_id)}</span></div>
+        <div class="title">${esc(x.title)} <span class="quiet" style="display:inline">· ${esc(x.system_id)}</span></div>
         <div class="detail">${esc(x.detail)}</div>
       </div>
-      <button onclick="ack('${esc(x.id)}')">Acknowledge</button>
-    </div>`).join("");
+      <button class="btn" onclick="ack('${esc(x.id)}')">Acknowledge</button>
+    </div>`).join("")
+    : '<div class="quiet">No open warnings. Quiet is good.</div>';
 }
-
 async function ack(id) { await post("/api/warnings/" + id + "/ack"); loadWarnings(); loadOverview(); }
-
 $("scanBtn").onclick = async () => {
   $("scanBtn").textContent = "Scanning…";
   await post("/api/scan", { force: true });
   $("scanBtn").textContent = "Scan now";
-  loadWarnings();
+  loadWarnings(); pollPulse();
 };
 
-async function loadLogs() {
-  const sys = $("logSystem").value;
-  if (!sys) return;
-  const q = $("logFilter").value.trim();
-  const r = await j("/api/logs?limit=50&system_id=" + encodeURIComponent(sys) + (q ? "&q=" + encodeURIComponent(q) : ""));
-  $("logs").innerHTML = r.entries.length ? `
-    <table><tr><th>#</th><th>when (server)</th><th>action</th><th>payload</th></tr>
-    ${r.entries.map((e) => `<tr><td>${e.seq}</td>
-      <td>${esc(e.ts_server.replace("T", " ").slice(0, 19))}</td>
-      <td>${esc(e.action)}</td><td class="mono">${esc(e.payload_json)}</td></tr>`).join("")}
-    </table>` : '<div class="quiet">No entries match.</div>';
-}
-$("logRefresh").onclick = loadLogs;
-$("logSystem").onchange = loadLogs;
-$("logFilter").onkeydown = (e) => { if (e.key === "Enter") loadLogs(); };
-
+// ---- ask -----------------------------------------------------------------------
 const askMessages = [];
-function renderTable(a) {
-  return `<div class="scroll"><table><tr>${a.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>
-    ${a.rows.slice(0, 50).map((r) => `<tr>${a.columns.map((c) => `<td>${esc(r[c])}</td>`).join("")}</tr>`).join("")}</table></div>`;
+function tableHtml(a) {
+  return `<div class="scroll"><table><tr>${a.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
+    a.rows.slice(0, 50).map((r) => `<tr>${a.columns.map((c) => `<td>${esc(r[c])}</td>`).join("")}</tr>`).join("") +
+    "</table></div>";
 }
 async function ask() {
   const q = $("askInput").value.trim();
   if (!q) return;
   $("askInput").value = "";
   askMessages.push({ role: "user", content: q });
-  const thread = $("askthread");
-  thread.insertAdjacentHTML("beforeend", `<div class="msg user">${esc(q)}</div>`);
-  thread.insertAdjacentHTML("beforeend", `<div class="msg clio" id="pending">…</div>`);
+  $("thread").insertAdjacentHTML("beforeend",
+    `<div class="msg user">${esc(q)}</div><div class="msg clio" id="pending">…</div>`);
+  $("pending").scrollIntoView({ block: "end" });
   const r = await post("/api/ask", { messages: askMessages });
   const el = $("pending"); el.removeAttribute("id");
   if (r.error) { el.textContent = "Something went wrong: " + r.error; return; }
   askMessages.push({ role: "assistant", content: r.reply });
-  el.innerHTML = esc(r.reply) + (r.artifacts || []).map(renderTable).join("");
+  el.innerHTML = esc(r.reply) + (r.artifacts || []).map(tableHtml).join("");
 }
 $("askBtn").onclick = ask;
 $("askInput").onkeydown = (e) => { if (e.key === "Enter") ask(); };
 
-// ---- admin: systems registry + key minting ----------------------------------
+// ---- settings ------------------------------------------------------------------
+$("settingsBtn").onclick = () => { $("settingsOverlay").classList.add("on"); loadPrefs(); loadAdmin(); };
+$("settingsClose").onclick = () => $("settingsOverlay").classList.remove("on");
+$("settingsOverlay").onclick = (e) => { if (e.target === $("settingsOverlay")) $("settingsOverlay").classList.remove("on"); };
+
+async function loadPrefs() {
+  prefs = await j("/api/prefs");
+  $("prefTz").value = prefs.tz_offset;
+  $("prefHours").value = prefs.business_hours;
+  $("prefDays").value = prefs.business_days;
+  $("prefExport").value = prefs.export_rows;
+  $("prefWatch").value = prefs.watch.join("\n");
+  $("prefMute").value = prefs.mute.join("\n");
+}
+$("prefSave").onclick = async () => {
+  prefs = await post("/api/prefs", {
+    tz_offset: Number($("prefTz").value),
+    business_hours: $("prefHours").value.trim(),
+    business_days: $("prefDays").value.trim(),
+    export_rows: Number($("prefExport").value),
+    watch: $("prefWatch").value.split("\n").map((s) => s.trim()).filter(Boolean),
+    mute: $("prefMute").value.split("\n").map((s) => s.trim()).filter(Boolean),
+  });
+  $("prefStatus").textContent = "Saved.";
+  setTimeout(() => $("prefStatus").textContent = "", 2000);
+  document.querySelectorAll("#feed .row").forEach((r) => {
+    r.classList.toggle("watched", matchesAny(r.dataset.act, prefs.watch));
+    const m = matchesAny(r.dataset.act, prefs.mute);
+    r.classList.toggle("muted", m);
+    r.dataset.muted = m ? 1 : 0;
+  });
+  applyFeedFilters();
+};
+
+// Admin
 const adminToken = () => sessionStorage.getItem("clio_admin") || "";
 const adminHeaders = () => ({ Authorization: "Bearer " + adminToken(), "Content-Type": "application/json" });
-
 async function loadAdmin() {
   if (!adminToken()) return;
   const r = await fetch("/v1/admin/systems", { headers: adminHeaders() });
@@ -218,41 +488,40 @@ async function loadAdmin() {
   const { data } = await r.json();
   $("adminLocked").style.display = "none";
   $("adminPanel").style.display = "block";
-  $("adminSystems").innerHTML = `
-    <table><tr><th>system</th><th>label</th><th>FM server</th><th>file</th><th>keys</th><th>head</th></tr>
-    ${data.systems.map((s) => `<tr>
-      <td>${esc(s.system_id)}</td><td>${esc(s.label || "")}</td>
+  $("adminSystems").innerHTML = `<table class="admin">
+    <tr><th>system</th><th>label</th><th>FM server</th><th>file</th><th>keys</th><th>head</th></tr>` +
+    data.systems.map((s) => `<tr><td>${esc(s.system_id)}</td><td>${esc(s.label || "")}</td>
       <td>${esc(s.fm_server || "")}</td><td>${esc(s.fm_file || "")}</td>
-      <td>${s.active_keys}</td><td>#${s.seq}</td></tr>`).join("")}
-    </table>`;
+      <td>${s.active_keys}</td><td>#${s.seq}</td></tr>`).join("") + "</table>";
 }
-
 $("adminUnlock").onclick = async () => {
   sessionStorage.setItem("clio_admin", $("adminToken").value.trim());
   await loadAdmin();
-  if (!$("adminPanel").style.display || $("adminPanel").style.display === "none") {
-    alert("That token was not accepted.");
-  }
+  if ($("adminPanel").style.display === "none") alert("That token was not accepted.");
 };
-
 $("regMint").onclick = async () => {
-  const body = {
-    system_id: $("regId").value.trim(), label: $("regLabel").value.trim() || null,
-    fm_server: $("regServer").value.trim() || null, fm_file: $("regFile").value.trim() || null,
-  };
+  const body = { system_id: $("regId").value.trim(), label: $("regLabel").value.trim() || null,
+    fm_server: $("regServer").value.trim() || null, fm_file: $("regFile").value.trim() || null };
   if (!body.system_id) return alert("system id is required");
   const r = await fetch("/v1/admin/keys", { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) });
   const j2 = await r.json();
   if (!j2.ok) return alert(j2.error?.message || "mint failed");
-  $("mintResult").innerHTML = `
-    <div class="warning"><span class="badge b-ok">key</span>
-      <div class="body"><div class="title">Copy it now; it is shown exactly once.</div>
-      <div class="hash">${esc(j2.data.key)}</div></div></div>`;
+  $("mintResult").innerHTML = `<div class="keybox">Copy it now, it is shown exactly once:<br><strong>${esc(j2.data.key)}</strong></div>`;
   loadAdmin(); loadOverview();
 };
 
-loadOverview(); loadWarnings(); loadAdmin();
-setInterval(() => { loadOverview(); loadWarnings(); }, 60000);
+// ---- boot ----------------------------------------------------------------------
+(async () => {
+  await loadPrefs();
+  loadOverview(); loadWarnings(); pollPulse(); pollFeed();
+  setInterval(pollFeed, 5000);
+  setInterval(pollPulse, 20000);
+  setInterval(() => { loadOverview(); loadWarnings(); }, 60000);
+  setInterval(() => document.querySelectorAll("#feed .row .t").forEach((t) => {
+    const iso = t.closest(".row").title;
+    if (iso) t.textContent = ago(iso) + " ago";
+  }), 30000);
+})();
 </script>
 </body>
 </html>

@@ -91,6 +91,24 @@ export async function askLogs(dbRead, messages) {
   return { reply: replyText || "Here's what I found.", artifacts };
 }
 
+// ---- The pulse --------------------------------------------------------------
+// A short rolling read of what's happening, regenerated only when there are
+// new entries and the cached one has aged out (server throttles). Numbers
+// arrive pre-computed; the model only narrates them.
+
+export async function pulseText(stats) {
+  const system =
+    "You are Clio, watching FileMaker system logs. Given pre-computed activity stats, write a 2-3 sentence " +
+    "plain-English pulse for a database admin: what's happening, whether it looks routine, and the one thing " +
+    "worth a glance if any. Cite only numbers present in the stats. Calm, dry, specific; no headings, no lists, " +
+    "no jargon, never em dashes (use commas, colons, or parentheses).";
+  const resp = await anthropicFetch({
+    model: MODEL(), max_tokens: 300, system,
+    messages: [{ role: "user", content: JSON.stringify(stats) }],
+  }, 30000);
+  return resp.content.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
+}
+
 // ---- Scan findings ----------------------------------------------------------
 // The deterministic aggregates go IN; the model calls report_finding 0..n
 // times choosing severity and wording. evidence_index points at the aggregate

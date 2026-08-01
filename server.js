@@ -13,8 +13,8 @@ import { fileURLToPath } from "url";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { openDb, openDbReadOnly } from "./db.js";
 import { appendBatch, head, verifyRange } from "./chain.js";
-import { runScan } from "./scan.js";
-import { askLogs, aiFindings, aiAvailable } from "./ai.js";
+import { runScan, getPrefs } from "./scan.js";
+import { askLogs, aiFindings, aiAvailable, pulseText } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
@@ -387,10 +387,102 @@ app.get("/api/overview", (_req, res) => {
   res.json({ systems, ai: aiAvailable(), version: VERSION });
 });
 
+// With system_id: that chain, seq-cursor paging. Without: the live feed,
+// newest first across every system (poll with since=<last ts_server seen>).
 app.get("/api/logs", (req, res) => {
   const sid = String(req.query.system_id || "");
-  if (!sid) return res.status(400).json({ error: "system_id required" });
-  res.json(queryLogs(sid, req.query));
+  if (sid) return res.json(queryLogs(sid, req.query));
+  const where = []; const params = [];
+  if (req.query.since) { where.push("ts_server > ?"); params.push(String(req.query.since)); }
+  if (req.query.q) { where.push("(payload_json LIKE ? OR action LIKE ?)"); params.push(`%${req.query.q}%`, `%${req.query.q}%`); }
+  const limit = Math.min(Number(req.query.limit) || 50, 500);
+  const rows = db.prepare(
+    `SELECT system_id, seq, ts_client, ts_server, category, action, payload_json
+     FROM log_entries ${where.length ? "WHERE " + where.join(" AND ") : ""}
+     ORDER BY ts_server DESC, system_id, seq DESC LIMIT ${limit}`
+  ).all(...params);
+  res.json({ entries: rows, latest_ts: rows.length ? rows[0].ts_server : (req.query.since || null) });
+});
+
+// ---- prefs (what the admin cares about) --------------------------------------
+
+const metaGet = (k) => db.prepare("SELECT v FROM meta WHERE k = ?").get(k)?.v;
+const metaSet = (k, v) => db.prepare(
+  "INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v"
+).run(k, v);
+
+app.get("/api/prefs", (_req, res) => res.json(getPrefs(db)));
+
+app.post("/api/prefs", (req, res) => {
+  const current = getPrefs(db);
+  const b = req.body || {};
+  const next = {
+    tz_offset: Number.isFinite(Number(b.tz_offset)) ? Number(b.tz_offset) : current.tz_offset,
+    business_hours: /^\d{1,2}-\d{1,2}$/.test(b.business_hours || "") ? b.business_hours : current.business_hours,
+    business_days: /^\d-\d$/.test(b.business_days || "") ? b.business_days : current.business_days,
+    export_rows: Number.isFinite(Number(b.export_rows)) ? Number(b.export_rows) : current.export_rows,
+    watch: Array.isArray(b.watch) ? b.watch.map(String).filter(Boolean).slice(0, 50) : current.watch,
+    mute: Array.isArray(b.mute) ? b.mute.map(String).filter(Boolean).slice(0, 50) : current.mute,
+  };
+  metaSet("prefs", JSON.stringify(next));
+  res.json(next);
+});
+
+// ---- the pulse ----------------------------------------------------------------
+// Cheap when idle: cached until new entries arrive AND the cache is >60s old.
+
+async function buildPulse(total) {
+  const dayAgo = new Date(Date.now() - 86400000).toISOString();
+  const perSystem = db.prepare(
+    "SELECT system_id, COUNT(*) AS n FROM log_entries WHERE ts_server >= ? GROUP BY system_id ORDER BY n DESC"
+  ).all(dayAgo);
+  const topActions = db.prepare(
+    "SELECT action, COUNT(*) AS n FROM log_entries WHERE ts_server >= ? GROUP BY action ORDER BY n DESC LIMIT 8"
+  ).all(dayAgo);
+  const trouble = db.prepare(
+    `SELECT action, COUNT(*) AS n FROM log_entries WHERE ts_server >= ?
+     AND (action LIKE '%error%' OR action LIKE '%fail%' OR action LIKE '%denied%' OR action LIKE '%.deleted')
+     GROUP BY action ORDER BY n DESC LIMIT 5`
+  ).all(dayAgo);
+  const openWarnings = db.prepare("SELECT COUNT(*) AS n FROM warnings WHERE status = 'open'").get().n;
+  const stats = {
+    events_last_24h: perSystem.reduce((s, r) => s + r.n, 0),
+    systems_active_24h: perSystem.map((r) => `${r.system_id} (${r.n})`),
+    top_actions: topActions.map((r) => `${r.action} (${r.n})`),
+    trouble_shaped: trouble.map((r) => `${r.action} (${r.n})`),
+    open_warnings: openWarnings,
+  };
+  let summary = "";
+  if (aiAvailable()) {
+    try { summary = await pulseText(stats); } catch {}
+  }
+  if (!summary) {
+    summary = `${stats.events_last_24h} events in the last 24 hours across ` +
+      `${perSystem.length} system${perSystem.length === 1 ? "" : "s"}` +
+      (trouble.length ? `; trouble-shaped: ${stats.trouble_shaped.join(", ")}` : "; nothing trouble-shaped") +
+      `. ${openWarnings} open warning${openWarnings === 1 ? "" : "s"}.`;
+  }
+  return { summary, stats, generated_at: new Date().toISOString(), total };
+}
+
+let pulseBuilding = null;
+app.get("/api/pulse", async (_req, res) => {
+  try {
+    const total = db.prepare("SELECT COUNT(*) AS n FROM log_entries").get().n;
+    let cached = null;
+    try { cached = JSON.parse(metaGet("pulse") || "null"); } catch {}
+    const stale = !cached || (cached.total !== total &&
+      Date.now() - Date.parse(cached.generated_at) > 60000);
+    if (!stale) return res.json(cached);
+    pulseBuilding ||= buildPulse(total).then((p) => {
+      metaSet("pulse", JSON.stringify(p));
+      pulseBuilding = null;
+      return p;
+    }).catch((e) => { pulseBuilding = null; throw e; });
+    res.json(await pulseBuilding);
+  } catch (e) {
+    res.status(200).json({ summary: "", error: String(e.message || e) });
+  }
 });
 
 app.get("/api/warnings", (req, res) => {

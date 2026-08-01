@@ -13,13 +13,31 @@ const DAY = 24 * 60 * 60 * 1000;
 //   BUSINESS_HOURS   local hours considered on-hours, "07-19"
 //   BUSINESS_DAYS    "1-5" = Monday-Friday (0=Sunday, 6=Saturday)
 //   EXPORT_ROWS_THRESHOLD  payload {"rows": N} at or above this is a big export
-function watchdogConfig() {
-  const [h1, h2] = (process.env.BUSINESS_HOURS || "07-19").split("-").map(Number);
-  const [d1, d2] = (process.env.BUSINESS_DAYS || "1-5").split("-").map(Number);
+// UI-saved prefs (meta key "prefs") win over env; env wins over defaults.
+export function getPrefs(db) {
+  let saved = {};
+  try {
+    const row = db.prepare("SELECT v FROM meta WHERE k = 'prefs'").get();
+    if (row) saved = JSON.parse(row.v);
+  } catch {}
   return {
-    tzModifier: `${Number(process.env.CLIO_TZ_OFFSET || 0)} hours`,
+    tz_offset: saved.tz_offset ?? Number(process.env.CLIO_TZ_OFFSET || 0),
+    business_hours: saved.business_hours || process.env.BUSINESS_HOURS || "07-19",
+    business_days: saved.business_days || process.env.BUSINESS_DAYS || "1-5",
+    export_rows: saved.export_rows ?? Number(process.env.EXPORT_ROWS_THRESHOLD || 1000),
+    watch: Array.isArray(saved.watch) ? saved.watch : [],
+    mute: Array.isArray(saved.mute) ? saved.mute : [],
+  };
+}
+
+function watchdogConfig(db) {
+  const p = getPrefs(db);
+  const [h1, h2] = p.business_hours.split("-").map(Number);
+  const [d1, d2] = p.business_days.split("-").map(Number);
+  return {
+    tzModifier: `${Number(p.tz_offset)} hours`,
     hourStart: h1, hourEnd: h2, dayStart: d1, dayEnd: d2,
-    exportRows: Number(process.env.EXPORT_ROWS_THRESHOLD || 1000),
+    exportRows: p.export_rows,
   };
 }
 
@@ -28,7 +46,7 @@ export function aggregatesForSystem(db, systemId, now = Date.now()) {
   const dayAgo = iso(now - DAY);
   const baseStart = iso(now - 15 * DAY);
   const out = [];
-  const cfg = watchdogConfig();
+  const cfg = watchdogConfig(db);
 
   // Volume per action: last 24h vs baseline daily mean.
   const rows = db.prepare(
@@ -42,12 +60,14 @@ export function aggregatesForSystem(db, systemId, now = Date.now()) {
     const baseMean = r.base / 14;
     const errorShaped = /error|fail|denied|invalid|tamper/i.test(r.action);
     const deleteShaped = /\.deleted?$/i.test(r.action);
-    if (r.base === 0 && r.last24 > 0) {
-      out.push({ kind: "new_action", system_id: systemId, action: r.action,
-        last24: r.last24, note: "action never seen in the prior 14 days" });
-    } else if (deleteShaped && r.last24 >= 10 && r.last24 > 3 * baseMean) {
+    // Danger shapes outrank novelty: a brand-new action that is also a
+    // delete or error burst reports as the burst, not as trivia.
+    if (deleteShaped && r.last24 >= 10 && r.last24 > 3 * baseMean) {
       out.push({ kind: "delete_spike", system_id: systemId, action: r.action,
         last24: r.last24, baseline_daily_mean: round2(baseMean) });
+    } else if (r.base === 0 && r.last24 > 0) {
+      out.push({ kind: "new_action", system_id: systemId, action: r.action,
+        last24: r.last24, note: "action never seen in the prior 14 days" });
     } else if (r.last24 >= 10 && baseMean > 0 && r.last24 > 3 * baseMean) {
       out.push({ kind: errorShaped ? "error_spike" : "volume_spike", system_id: systemId,
         action: r.action, last24: r.last24, baseline_daily_mean: round2(baseMean) });
