@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmxmlsnippet type="FMObjectList">
+  <BaseTable comment="One-record Clio settings table. Global fields, set once at install." name="ClioSettings">
+    <Field id="1" dataType="Text" fieldType="Normal" name="ClioURL">
+      <Comment>Base URL of the Clio service, no trailing slash (e.g. https://your-clio.fly.dev)</Comment>
+      <AutoEnter allowEditing="True" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="False" index="None" indexLanguage="English" global="True" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="2" dataType="Text" fieldType="Normal" name="ClioAPIKey">
+      <Comment>Bearer key minted by Clio admin (nk_clio_...); one key per FileMaker system, identifies the system server-side</Comment>
+      <AutoEnter allowEditing="True" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="False" index="None" indexLanguage="English" global="True" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="3" dataType="Text" fieldType="Normal" name="SystemID">
+      <Comment>Optional human-readable label for this FileMaker system (the API key is what scopes the chain server-side)</Comment>
+      <AutoEnter allowEditing="True" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="False" index="None" indexLanguage="English" global="True" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+  </BaseTable>
+</fmxmlsnippet>

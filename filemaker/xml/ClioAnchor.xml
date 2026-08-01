@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmxmlsnippet type="FMObjectList">
+  <BaseTable comment="Append-only Clio chain anchors. Records are created, never edited (except VerifyStatus written onto the record just created)." name="ClioAnchor">
+    <Field id="1" dataType="TimeStamp" fieldType="Normal" name="CreatedTS">
+      <Comment>Auto-enter creation timestamp</Comment>
+      <AutoEnter allowEditing="False" value="CreationTimeStamp" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="English" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="2" dataType="Number" fieldType="Normal" name="HeadSeq">
+      <Comment>Chain head sequence number from /v1/head (data.seq)</Comment>
+      <AutoEnter allowEditing="True" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="English" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="3" dataType="Text" fieldType="Normal" name="HeadHash">
+      <Comment>Chain head entry hash from /v1/head (data.entry_hash); 64 hex chars</Comment>
+      <AutoEnter allowEditing="True" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="Minimal" indexLanguage="Unicode_Raw" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="4" dataType="Number" fieldType="Normal" name="EntryCount">
+      <Comment>Total entry count from /v1/head (data.entry_count)</Comment>
+      <AutoEnter allowEditing="True" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="None" indexLanguage="English" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="5" dataType="Text" fieldType="Normal" name="VerifyStatus">
+      <Comment>One of: verified, TAMPER SUSPECTED, first anchor</Comment>
+      <AutoEnter allowEditing="True" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="True" index="Minimal" indexLanguage="English" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+    <Field id="6" dataType="Text" fieldType="Normal" name="RawResponse">
+      <Comment>Full JSON reply from /v1/head, kept for the record</Comment>
+      <AutoEnter allowEditing="True" constant="False" furigana="False" lookup="False" calculation="False">
+        <ConstantData/>
+      </AutoEnter>
+      <Validation messageCalc="False" message="False" maxLength="False" valuelist="False" calculation="False" alwaysValidateCalculation="False" type="OnlyDuringDataEntry">
+        <NotEmpty value="False"/>
+        <Unique value="False"/>
+        <Existing value="False"/>
+        <StrictValidation value="False"/>
+      </Validation>
+      <Storage autoIndex="False" index="None" indexLanguage="English" global="False" maxRepetition="1"/>
+      <Annotation>
+        <Text/>
+      </Annotation>
+      <DisplayNames enable="False"/>
+    </Field>
+  </BaseTable>
+</fmxmlsnippet>
