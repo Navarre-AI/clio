@@ -303,10 +303,27 @@ function ago(iso) {
   return Math.round(s / 86400) + "d";
 }
 
+// The human line, fmLog-style: a payload's "message" (or human "action"
+// sentence, or a computed changed-fields summary) beats raw JSON.
+function humanLine(e) {
+  try {
+    const p = JSON.parse(e.payload_json);
+    if (typeof p.message === "string" && p.message) return p.message;
+    if (typeof p.action === "string" && /\s/.test(p.action)) return p.action;
+    if (p.changed && typeof p.changed === "object") {
+      const fields = Object.keys(p.changed).filter((f) => !f.startsWith("z_"));
+      if (fields.length) return `Changed ${fields.join(", ")}` +
+        (p.data?.["z_Modifier"] ? ` (${p.data["z_Modifier"]})` : "");
+    }
+  } catch {}
+  return "";
+}
+
 function rowHtml(e, fresh) {
   const tag = classify(e.action);
   const watched = matchesAny(e.action, prefs.watch);
   const muted = matchesAny(e.action, prefs.mute);
+  const line = humanLine(e);
   return `<div class="row ${fresh ? "fresh" : ""} ${watched ? "watched" : ""} ${muted ? "muted" : ""}"
       data-sys="${esc(e.system_id)}" data-act="${esc(e.action.toLowerCase())}" data-muted="${muted ? 1 : 0}"
       title="${esc(e.ts_server)}">
@@ -314,7 +331,7 @@ function rowHtml(e, fresh) {
     <span class="tag ${tag}">${tag === "other" ? "·" : tag}</span>
     <span class="sys">${esc(e.system_id)}</span>
     <span class="act">${esc(e.action)}</span>
-    <span class="pay">${esc(e.payload_json)}</span>
+    <span class="pay" title="${esc(e.payload_json)}">${esc(line || e.payload_json)}</span>
   </div>`;
 }
 
