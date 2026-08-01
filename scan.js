@@ -188,7 +188,7 @@ function detailFor(a) {
 // Run a full scan across every system that has ever logged. Dedupes on
 // scan_date unless forced. aiFindings, when provided, turns aggregates into
 // findings via the model; otherwise thresholds do it.
-export async function runScan(db, { force = false, aiFindings = null, now = Date.now() } = {}) {
+export async function runScan(db, { force = false, aiFindings = null, ruleFindings = null, now = Date.now() } = {}) {
   const scanDate = iso(now).slice(0, 10);
   const already = db.prepare(
     "SELECT id FROM scans WHERE scan_date = ? AND status = 'done'"
@@ -203,21 +203,25 @@ export async function runScan(db, { force = false, aiFindings = null, now = Date
     const systems = db.prepare("SELECT DISTINCT system_id FROM log_entries").all()
       .map((r) => r.system_id);
     let findings = 0;
+    const ins = db.prepare(
+      `INSERT INTO warnings (id, system_id, severity, title, detail, evidence_json, scan_id, source, class)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    const put = (w, source, cls) => {
+      ins.run(randomUUID(), w.system_id, w.severity, w.title, w.detail,
+        JSON.stringify(w.evidence ?? null), scanId, source, cls ?? null);
+      findings++;
+    };
+    // Automatic detectors, per system.
     for (const systemId of systems) {
       const aggregates = aggregatesForSystem(db, systemId, now);
       if (!aggregates.length) continue;
-      const warnings = aiFindings
-        ? await aiFindings(systemId, aggregates)
-        : warningsFromAggregates(aggregates);
-      const ins = db.prepare(
-        `INSERT INTO warnings (id, system_id, severity, title, detail, evidence_json, scan_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      );
-      for (const w of warnings) {
-        ins.run(randomUUID(), w.system_id, w.severity, w.title, w.detail,
-          JSON.stringify(w.evidence ?? null), scanId);
-        findings++;
-      }
+      const warnings = aiFindings ? await aiFindings(systemId, aggregates) : warningsFromAggregates(aggregates);
+      for (const w of warnings) put(w, "auto", null);
+    }
+    // Admin-authored rules, evaluated deterministically.
+    if (ruleFindings) {
+      for (const w of ruleFindings(now)) put(w, w.source || "rule", w.class || null);
     }
     db.prepare("UPDATE scans SET finished_at = ?, systems_scanned = ?, findings = ?, status = 'done' WHERE id = ?")
       .run(iso(Date.now()), systems.length, findings, scanId);

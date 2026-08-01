@@ -14,7 +14,8 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { openDb, openDbReadOnly } from "./db.js";
 import { appendBatch, head, verifyRange } from "./chain.js";
 import { runScan, getPrefs } from "./scan.js";
-import { askLogs, aiFindings, aiAvailable, pulseText } from "./ai.js";
+import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, currentModel, MODELS } from "./ai.js";
+import { runRules, dryRun, createRule, listRules } from "./rules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
@@ -334,7 +335,7 @@ function listWarnings(systemId, status) {
   if (systemId) { where.push("system_id = ?"); params.push(systemId); }
   if (status) { where.push("status = ?"); params.push(status); }
   return db.prepare(
-    `SELECT id, system_id, severity, title, detail, evidence_json, scan_id, status, created_at
+    `SELECT id, system_id, severity, title, detail, evidence_json, scan_id, status, created_at, source, class
      FROM warnings ${where.length ? "WHERE " + where.join(" AND ") : ""}
      ORDER BY created_at DESC LIMIT 200`
   ).all(...params);
@@ -410,13 +411,95 @@ async function pushAlerts(scanId) {
 }
 
 async function doScan(force) {
-  const result = await runScan(db, { force, aiFindings: aiAvailable() ? aiFindings : null });
+  const result = await runScan(db, {
+    force,
+    aiFindings: aiAvailable() ? aiFindings : null,
+    ruleFindings: (now) => runRules(db, now),
+  });
   if (!result.skipped) {
     selfLog("scan.run", { scan_id: result.scan_id, findings: result.findings });
     pushAlerts(result.scan_id); // deliberately not awaited
   }
   return result;
 }
+
+// ---- rules ------------------------------------------------------------------
+
+function actionVocab() {
+  return db.prepare(
+    "SELECT system_id, action, COUNT(*) AS n FROM log_entries GROUP BY system_id, action ORDER BY n DESC LIMIT 80"
+  ).all().map((a) => `${a.system_id} ${a.action} (${a.n})`).join("\n");
+}
+
+app.get("/api/rules", (_req, res) => res.json({ rules: listRules(db) }));
+
+app.post("/api/rules", (req, res) => {
+  const r = req.body || {};
+  if (!r.name || !r.match) return res.status(400).json({ error: "name and match required" });
+  res.json(createRule(db, r));
+});
+
+app.patch("/api/rules/:id", (req, res) => {
+  const fields = [];
+  const params = [];
+  for (const k of ["name", "description", "effect", "severity", "class"]) {
+    if (req.body[k] !== undefined) { fields.push(`${k} = ?`); params.push(String(req.body[k])); }
+  }
+  if (req.body.enabled !== undefined) { fields.push("enabled = ?"); params.push(req.body.enabled ? 1 : 0); }
+  if (req.body.match !== undefined) { fields.push("match_json = ?"); params.push(JSON.stringify(req.body.match)); }
+  if (!fields.length) return res.json({ ok: true });
+  params.push(req.params.id);
+  const r = db.prepare(`UPDATE rules SET ${fields.join(", ")} WHERE id = ?`).run(...params);
+  if (!r.changes) return res.status(404).json({ error: "no such rule" });
+  res.json({ ok: true });
+});
+
+app.delete("/api/rules/:id", (req, res) => {
+  db.prepare("DELETE FROM rules WHERE id = ?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Dry-run a match spec against history before saving.
+app.post("/api/rules/dry-run", (req, res) => {
+  try {
+    res.json(dryRun(db, req.body?.match || {}, Number(req.body?.days) || 30));
+  } catch (e) {
+    res.status(200).json({ error: String(e.message || e) });
+  }
+});
+
+// The conversational rule author: chat in, reply + optional structured draft
+// (already dry-run) out.
+app.post("/api/rules/author", async (req, res) => {
+  try {
+    if (!aiAvailable()) return res.json({ reply: "Set an Anthropic API key to author rules by chat. You can still add them by hand.", draft: null });
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const { reply, draft } = await authorRule(messages, actionVocab());
+    let preview = null;
+    if (draft && draft.match) {
+      try { preview = dryRun(db, draft.match, 30); } catch {}
+    }
+    res.json({ reply, draft, preview });
+  } catch (e) {
+    res.status(200).json({ reply: "", error: String(e.message || e) });
+  }
+});
+
+// ---- AI settings ------------------------------------------------------------
+
+app.get("/api/ai", (_req, res) => {
+  res.json({ available: aiAvailable(), model: currentModel(), models: MODELS });
+});
+
+app.post("/api/ai", (req, res) => {
+  const m = String(req.body?.model || "");
+  if (m && MODELS.some((x) => x.id === m)) {
+    setModel(m);
+    metaSet("model", m);
+    return res.json({ ok: true, model: m });
+  }
+  res.status(400).json({ error: "unknown model" });
+});
 
 app.post("/v1/scan", keyOrAdmin, async (req, res) => {
   try {
@@ -694,6 +777,9 @@ app.use((e, req, res, _next) => {
   fail(res, 500, "internal", "Internal error");
 });
 
+// Restore the saved AI model choice (Settings > AI persists it to meta).
+try { const m = metaGet("model"); if (m) setModel(m); } catch {}
+
 app.listen(PORT, () => {
-  console.log(JSON.stringify({ level: "info", msg: `Clio listening on :${PORT}`, db: DB_PATH, ai: aiAvailable() }));
+  console.log(JSON.stringify({ level: "info", msg: `Clio listening on :${PORT}`, db: DB_PATH, ai: aiAvailable(), model: currentModel() }));
 });
