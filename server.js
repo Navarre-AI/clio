@@ -172,10 +172,25 @@ app.get("/v1/info", (_req, res) => {
 
 // ---- ingest -----------------------------------------------------------------
 
+// Accepts two body shapes:
+//   { entries: [ {event_id, ts_client, category, action, payload_json}, ... ] }  (batch, chassis contract)
+//   { category, action, payload, ...extras }  (single flat event, hand-written FM calls)
+// In the flat shape, "payload" or "payload_json" both work, and any other
+// top-level keys (table, account_name, ...) fold into the payload.
+function normalizeBody(b) {
+  if (Array.isArray(b?.entries)) return b.entries;
+  if (!b || (!b.action && !b.category)) return null;
+  const { category, action, payload, payload_json, event_id, ts_client, ...rest } = b;
+  let pl = payload_json ?? payload ?? {};
+  if (typeof pl === "string") { try { pl = JSON.parse(pl); } catch { pl = { text: pl }; } }
+  if (pl && typeof pl === "object" && !Array.isArray(pl)) pl = { ...pl, ...rest };
+  return [{ event_id, ts_client, category, action, payload_json: pl }];
+}
+
 app.post("/v1/log", keyAuth, (req, res) => {
-  const entries = req.body?.entries;
+  const entries = normalizeBody(req.body);
   if (!Array.isArray(entries) || entries.length === 0) {
-    return fail(res, 400, "bad_request", "Body must be { entries: [...] } with at least one entry.");
+    return fail(res, 400, "bad_request", "Body must be { entries: [...] } or one flat { category, action, payload } event.");
   }
   if (entries.length > MAX_BATCH) {
     return fail(res, 413, "batch_too_large", `At most ${MAX_BATCH} entries per batch.`);
