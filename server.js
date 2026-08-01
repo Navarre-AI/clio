@@ -350,28 +350,63 @@ app.post("/v1/warnings/:id/ack", adminAuth, (req, res) => {
   res.json(ok({ acknowledged: req.params.id }));
 });
 
-// Alerting: if ALERT_WEBHOOK is set, warn/critical findings from each scan
-// are POSTed there as JSON, fire-and-forget. Works with a Slack incoming
-// webhook, the Comm bus, or anything that accepts JSON. Email stays the
-// anchor script's job (FMS schedule notifications).
+// Notification channels. Two, fire-and-forget, never block a scan:
+//   Slack  — an incoming-webhook URL; we send Slack's { text } (+ blocks).
+//   Webhook — a generic JSON POST for the Comm bus or anything else.
+// Both are read from prefs first (UI-settable), env as fallback. Email
+// stays the anchor script's job (FMS schedule notifications).
+function channels() {
+  const p = getPrefs(db);
+  return {
+    slack: p.slack_webhook || process.env.SLACK_WEBHOOK || "",
+    webhook: p.alert_webhook || process.env.ALERT_WEBHOOK || "",
+  };
+}
+
+const SEV_EMOJI = { critical: ":rotating_light:", warn: ":warning:", info: ":information_source:" };
+
+async function postJson(url, body) {
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) {
+    console.log(JSON.stringify({ level: "warn", msg: "notify failed", url: url.slice(0, 40), error: String(e.message || e) }));
+  }
+}
+
+async function deliver(alerts, { test = false } = {}) {
+  const ch = channels();
+  const plain = alerts.map((a) => `[${a.severity}] ${a.system_id}: ${a.title}. ${a.detail}`).join("\n");
+  const jobs = [];
+  if (ch.slack) {
+    const header = test ? "Clio test alert" :
+      `Clio: ${alerts.length} thing${alerts.length === 1 ? "" : "s"} worth a look`;
+    const lines = alerts.map((a) =>
+      `${SEV_EMOJI[a.severity] || "•"} *${a.system_id}* — ${a.title}\n${a.detail}`).join("\n\n");
+    jobs.push(postJson(ch.slack, {
+      text: `${header}\n${lines}`, // fallback/notification text
+      blocks: [
+        { type: "header", text: { type: "plain_text", text: header } },
+        { type: "section", text: { type: "mrkdwn", text: lines.slice(0, 2900) } },
+      ],
+    }));
+  }
+  if (ch.webhook) jobs.push(postJson(ch.webhook, { source: "clio", text: plain, alerts, test }));
+  await Promise.all(jobs);
+  return { slack: Boolean(ch.slack), webhook: Boolean(ch.webhook) };
+}
+
 async function pushAlerts(scanId) {
-  const hook = process.env.ALERT_WEBHOOK;
-  if (!hook || !scanId) return;
+  if (!scanId) return;
   const alerts = db.prepare(
     "SELECT system_id, severity, title, detail FROM warnings WHERE scan_id = ? AND severity IN ('warn','critical')"
   ).all(scanId);
   if (!alerts.length) return;
-  const text = alerts.map((a) => `[${a.severity}] ${a.system_id}: ${a.title}. ${a.detail}`).join("\n");
-  try {
-    await fetch(hook, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "clio", text, alerts }),
-      signal: AbortSignal.timeout(10000),
-    });
-  } catch (e) {
-    console.log(JSON.stringify({ level: "warn", msg: "alert webhook failed", error: String(e.message || e) }));
-  }
+  await deliver(alerts);
 }
 
 async function doScan(force) {
@@ -513,7 +548,10 @@ const metaSet = (k, v) => db.prepare(
   "INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v"
 ).run(k, v);
 
-app.get("/api/prefs", (_req, res) => res.json(getPrefs(db)));
+app.get("/api/prefs", (_req, res) => {
+  const p = getPrefs(db);
+  res.json({ ...p, slack_webhook: mask(p.slack_webhook), alert_webhook: mask(p.alert_webhook) });
+});
 
 app.post("/api/prefs", (req, res) => {
   const current = getPrefs(db);
@@ -525,9 +563,30 @@ app.post("/api/prefs", (req, res) => {
     export_rows: Number.isFinite(Number(b.export_rows)) ? Number(b.export_rows) : current.export_rows,
     watch: Array.isArray(b.watch) ? b.watch.map(String).filter(Boolean).slice(0, 50) : current.watch,
     mute: Array.isArray(b.mute) ? b.mute.map(String).filter(Boolean).slice(0, 50) : current.mute,
+    // A value ending in the mask ellipsis is the unchanged display value; keep the stored one.
+    slack_webhook: keepOrSet(b.slack_webhook, current.slack_webhook),
+    alert_webhook: keepOrSet(b.alert_webhook, current.alert_webhook),
   };
   metaSet("prefs", JSON.stringify(next));
-  res.json(next);
+  res.json({ ...next, slack_webhook: mask(next.slack_webhook), alert_webhook: mask(next.alert_webhook) });
+});
+
+// Never echo full webhook URLs back to the browser.
+function mask(u) { return u ? u.slice(0, 30) + "…" : ""; }
+function keepOrSet(incoming, current) {
+  if (typeof incoming !== "string") return current;
+  if (incoming.endsWith("…")) return current; // unchanged masked display value
+  return incoming.trim();
+}
+
+// Fire a test alert through the configured channels, so the UI's Test button works.
+app.post("/api/notify-test", async (_req, res) => {
+  const sent = await deliver([{
+    system_id: "clio", severity: "info",
+    title: "Channels are working",
+    detail: "This is a test alert from Clio. If you can read this, delivery is wired up.",
+  }], { test: true });
+  res.json({ sent });
 });
 
 // ---- the pulse ----------------------------------------------------------------

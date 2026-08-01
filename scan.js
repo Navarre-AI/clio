@@ -27,6 +27,8 @@ export function getPrefs(db) {
     export_rows: saved.export_rows ?? Number(process.env.EXPORT_ROWS_THRESHOLD || 1000),
     watch: Array.isArray(saved.watch) ? saved.watch : [],
     mute: Array.isArray(saved.mute) ? saved.mute : [],
+    slack_webhook: saved.slack_webhook || "",
+    alert_webhook: saved.alert_webhook || "",
   };
 }
 
