@@ -212,7 +212,7 @@ function ingest(req, res) {
     return fail(res, 413, "batch_too_large", `At most ${MAX_BATCH} entries per batch.`);
   }
   const result = appendBatch(db, systemId, entries);
-  res.json(ok(result));
+  res.json(ok(echoData(systemId, entries, result, entries.length > 1 ? "batch" : "event")));
 }
 
 app.post("/v1/log", keyAuth, ingest);
@@ -295,25 +295,87 @@ function trackFiles(systemId, entries) {
   for (const [file, n] of counts) upsertDbNew.run(systemId, file, n);
 }
 
+// A transaction touching more than this many records (an import, a mass
+// Replace, a Delete All) collapses to one summary entry per file/table/op,
+// instead of exploding every record. Keeps the log readable and the ingest
+// fast, and never hangs the client on a monster payload.
+const BULK_THRESHOLD = Number(process.env.BULK_THRESHOLD || 100);
+
+function collapseBulk(systemId, entries) {
+  const groups = new Map();
+  for (const e of entries) {
+    const p = e.payload_json;
+    const op = e.action.split(".").pop();
+    const key = `${p.file}|${p.table}|${op}`;
+    let g = groups.get(key);
+    if (!g) { g = { file: p.file, table: p.table, op, count: 0, account: p.account_name || null, first: p.record_id, last: p.record_id }; groups.set(key, g); }
+    g.count++; g.last = p.record_id; if (p.account_name) g.account = p.account_name;
+  }
+  return [...groups.values()].map((g) => ({
+    event_id: randomUUID(), ts_client: new Date().toISOString(),
+    category: `${systemId}.bulk`, action: `${systemId}.${g.table}.${g.op}`,
+    payload_json: {
+      message: `${g.count.toLocaleString()} records ${g.op} in ${g.table}`,
+      bulk: true, count: g.count, file: g.file, table: g.table, op: g.op,
+      account_name: g.account, first_record: g.first, last_record: g.last,
+    },
+  }));
+}
+
 function ingestTxn(req, res) {
   const systemId = req.system.systemId;
-  const entries = normalizeTxn(req.body, systemId);
+  let entries = normalizeTxn(req.body, systemId);
   if (entries === null) {
     return fail(res, 400, "bad_request", "Body must be the OnWindowTransaction JSON, posted as-is.");
   }
   if (entries.length === 0) return res.json(ok({ accepted: 0, duplicates: 0, head: head(db, systemId) })); // Find-mode empty firing
-  const latestInBatch = new Map();
-  for (const e of entries) {
-    const p = e.payload_json;
-    if (!p.data || typeof p.data !== "object") continue;
-    const k = `${p.table}#${p.record_id}`;
-    const prev = latestInBatch.get(k) ?? previousData(systemId, p.table, p.record_id);
-    if (prev && e.action.endsWith(".modified")) p.changed = diffRecords(prev, p.data);
-    latestInBatch.set(k, p.data);
+
+  let collapsed = 0;
+  if (entries.length > BULK_THRESHOLD) {
+    collapsed = entries.length;
+    entries = collapseBulk(systemId, entries);
+  } else {
+    // per-record diff against the last snapshot for that record
+    const latestInBatch = new Map();
+    for (const e of entries) {
+      const p = e.payload_json;
+      if (!p.data || typeof p.data !== "object") continue;
+      const k = `${p.table}#${p.record_id}`;
+      const prev = latestInBatch.get(k) ?? previousData(systemId, p.table, p.record_id);
+      if (prev && e.action.endsWith(".modified")) p.changed = diffRecords(prev, p.data);
+      latestInBatch.set(k, p.data);
+    }
   }
   const result = appendBatch(db, systemId, entries);
   trackFiles(systemId, entries);
-  res.json(ok(result));
+  res.json(ok(echoData(systemId, entries, result, collapsed ? "bulk" : "transaction", collapsed)));
+}
+
+// The response echoes what Clio understood: kind, what changed, who, a human
+// summary, capped for big batches. The fire-and-forget path ignores it; a
+// test call reads it to confirm attribution and shape without opening the UI.
+function echoData(systemId, entries, result, kind, collapsed = 0) {
+  const cap = 10;
+  const byAction = {};
+  for (const e of entries) byAction[e.action] = (byAction[e.action] || 0) + 1;
+  const shown = entries.slice(0, cap).map((e) => {
+    const p = typeof e.payload_json === "object" ? e.payload_json
+      : (() => { try { return JSON.parse(e.payload_json); } catch { return {}; } })();
+    const out = { action: e.action, file: p.file || null, table: p.table || null,
+      account_name: p.account_name || p.data?.z_Modifier || null, message: p.message || null };
+    if (p.changed) out.changed = Object.fromEntries(
+      Object.entries(p.changed).filter(([k]) => !k.startsWith("z_")).map(([k, v]) => [k, [v.from, v.to]]));
+    return out;
+  });
+  return {
+    accepted: result.accepted, duplicates: result.duplicates,
+    system_id: systemId, kind, head: result.head,
+    lifetime_entries: result.head?.seq ?? head(db, systemId).seq,
+    ...(collapsed ? { collapsed_from: collapsed } : {}),
+    by_action: byAction,
+    entries: shown,
+    truncated: entries.length > cap ? entries.length - cap : 0,
+  };
 }
 
 app.post("/v1/txn", keyAuth, ingestTxn);
@@ -752,6 +814,63 @@ app.get("/api/logs", (req, res) => {
      ORDER BY ts_server DESC, system_id, seq DESC LIMIT ${limit}`
   ).all(...params);
   res.json({ entries: rows, latest_ts: rows.length ? rows[0].ts_server : (req.query.since || null) });
+});
+
+// History, computed at read time from the raw log. Two modes:
+//   record mode (table + record_id): the full before->after timeline for one
+//     record, derived by walking its entries oldest-first and tracking the last
+//     value per field (works for lean "only-changed" and fat "full-record").
+//   list mode: cross-dimensional filter (actor, table, field, date, value) ->
+//     matching changes, newest first. No precomputation, pure SQL + a walk.
+app.get("/api/history", (req, res) => {
+  const q = req.query;
+  const sid = String(q.system_id || "");
+  if (!sid) return res.status(400).json({ error: "system_id required" });
+  const where = ["system_id = ?"]; const params = [sid];
+  if (q.table) { where.push("json_extract(payload_json,'$.table') = ?"); params.push(String(q.table)); }
+  if (q.record_id) { where.push("json_extract(payload_json,'$.record_id') = ?"); params.push(Number(q.record_id)); }
+  if (q.actor) { where.push("(json_extract(payload_json,'$.account_name') = ? OR json_extract(payload_json,'$.data.z_Modifier') = ?)"); params.push(String(q.actor), String(q.actor)); }
+  if (q.since) { where.push("ts_server >= ?"); params.push(String(q.since)); }
+  if (q.until) { where.push("ts_server < ?"); params.push(String(q.until)); }
+  if (q.q) { where.push("payload_json LIKE ?"); params.push(`%${q.q}%`); }
+  const recordMode = Boolean(q.record_id && q.table);
+  const field = q.field ? String(q.field) : null;
+  const limit = Math.min(Number(q.limit) || 300, 2000);
+  const rows = db.prepare(
+    `SELECT seq, ts_server, action, payload_json FROM log_entries
+     WHERE ${where.join(" AND ")} ORDER BY seq ${recordMode ? "ASC" : "DESC"} LIMIT ${limit}`
+  ).all(...params);
+
+  const parse = (s) => { try { return JSON.parse(s); } catch { return {}; } };
+  const items = [];
+  if (recordMode) {
+    const last = {};
+    for (const e of rows) { // oldest first: accumulate last-seen value per field
+      const p = parse(e.payload_json);
+      const data = p.data && typeof p.data === "object" ? p.data : null;
+      const who = p.account_name || data?.z_Modifier || null;
+      const changes = [];
+      if (data) for (const [f, v] of Object.entries(data)) {
+        if (f === "id" || f === "record_id") continue;
+        const before = last[f];
+        if (before !== undefined && JSON.stringify(before) !== JSON.stringify(v)) changes.push({ field: f, from: before, to: v });
+        last[f] = v;
+      }
+      const shown = field ? changes.filter((c) => c.field === field) : changes.filter((c) => !c.field.startsWith("z_"));
+      if (shown.length || (!field && e.action.endsWith(".new"))) items.push({ seq: e.seq, ts: e.ts_server, who, action: e.action, changes: shown });
+    }
+    items.reverse(); // newest first for display
+  } else {
+    for (const e of rows) {
+      const p = parse(e.payload_json);
+      const data = p.data && typeof p.data === "object" ? p.data : null;
+      const fields = data ? Object.keys(data).filter((k) => !/^(id|record_id|z_)/.test(k)) : [];
+      if (field && !fields.includes(field)) continue;
+      items.push({ seq: e.seq, ts: e.ts_server, who: p.account_name || data?.z_Modifier || null,
+        action: e.action, table: p.table || null, record_id: p.record_id ?? null, fields, message: p.message || null });
+    }
+  }
+  res.json({ items, mode: recordMode ? "record" : "list", count: items.length });
 });
 
 // ---- prefs (what the admin cares about) --------------------------------------

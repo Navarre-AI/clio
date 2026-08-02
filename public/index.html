@@ -197,6 +197,7 @@
     <div class="navitem on" data-v="ask"><span class="ico">✦</span> Ask the logs</div>
     <div class="navitem" data-v="live"><span class="ico">◉</span> Live</div>
     <div class="navitem" data-v="systems"><span class="ico">▦</span> Systems</div>
+    <div class="navitem" data-v="history"><span class="ico">↺</span> History</div>
     <div class="navitem" data-v="warnings"><span class="ico">⚠</span> Warnings <span class="cnt" id="warnCnt" style="display:none"></span></div>
   </div>
   <div class="side-foot">
@@ -244,6 +245,21 @@
   <!-- Systems -->
   <div class="view" id="v-systems"><div class="wrap wide">
     <div class="cards" id="systems"></div>
+  </div></div>
+
+  <!-- History -->
+  <div class="view" id="v-history"><div class="wrap wide">
+    <div class="feedbar">
+      <select class="input" id="hSystem" style="width:auto"></select>
+      <input class="input" id="hActor" placeholder="user" style="width:120px">
+      <input class="input" id="hTable" placeholder="table" style="width:120px">
+      <input class="input" id="hField" placeholder="field" style="width:120px">
+      <input class="input" id="hValue" placeholder="value contains…" style="width:150px">
+      <input class="input" id="hSince" type="date" style="width:auto">
+      <button class="btn sm" id="hGo">Search</button>
+      <span class="quiet" id="hStatus" style="padding:0"></span>
+    </div>
+    <div id="history"><div class="quiet">Filter by any dimension: user, table, field, value, date. Or click a log entry's "Record history".</div></div>
   </div></div>
 
   <!-- Warnings -->
@@ -355,7 +371,7 @@ if (localStorage.clio_theme === "dark" || (!localStorage.clio_theme && matchMedi
 $("themeBtn").onclick = () => { const d = document.documentElement.classList.toggle("dark"); localStorage.clio_theme = d ? "dark" : "light"; };
 
 // Nav
-const TITLES = { ask:["Ask the logs","every number comes from a real query"], live:["Live","the record, as it happens"], systems:["Systems","one chain per database"], warnings:["Warnings","what's worth a glance"] };
+const TITLES = { ask:["Ask the logs","every number comes from a real query"], live:["Live","the record, as it happens"], systems:["Systems","one log per system, however many files"], history:["History","who changed what, sliced any way"], warnings:["Warnings","what's worth a glance"] };
 document.querySelectorAll(".navitem").forEach((n) => n.onclick = () => {
   document.querySelectorAll(".navitem").forEach((x) => x.classList.toggle("on", x === n));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("on", v.id === "v-" + n.dataset.v));
@@ -494,11 +510,13 @@ function openEntry(key) {
   const changed = p.changed ? `<div class="chart-h" style="margin-top:12px">What changed</div><div class="kv">` +
     Object.entries(p.changed).filter(([f])=>!/^z_/.test(f)).map(([f,v]) =>
       `<div class="kk">${esc(f)}</div><div class="kvv">${esc(String(v.from))} → ${esc(String(v.to))}</div>`).join("") + `</div>` : "";
+  const histBtn = (p.table && p.record_id != null)
+    ? `<button class="btn ghost sm" onclick="document.getElementById('adhoc').classList.remove('open');recordHistory('${esc(e.system_id)}','${esc(p.table)}',${p.record_id})">↺ Record history</button> ` : "";
   openModalHTML(esc(e.action), `
     <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px">${esc(e.system_id)} · #${e.seq} · ${esc(e.ts_server.replace("T"," ").slice(0,19))}</div>
     ${changed}
     <div class="chart-h" style="margin-top:12px">Details</div><div class="kv">${rows || '<div class="kvv">No payload.</div>'}</div>
-    <div style="margin-top:14px"><button class="btn ghost sm" onclick="var b=this.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none'">Show raw JSON</button>
+    <div style="margin-top:14px">${histBtn}<button class="btn ghost sm" onclick="var b=this.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none'">Show raw JSON</button>
       <div class="rawbox" style="display:none">${esc(JSON.stringify(p,null,2))}</div></div>`);
 }
 function applyFeedFilters() {
@@ -534,6 +552,8 @@ async function loadOverview() {
     `Copyright © 2026 · Released under the MIT License.`;
   const sel=$("feedSystem"), cur=sel.value;
   sel.innerHTML = '<option value="">all systems</option>' + o.systems.map((s) => `<option ${cur===s.system_id?"selected":""}>${esc(s.system_id)}</option>`).join("");
+  const hs=$("hSystem"), hcur=hs.value;
+  hs.innerHTML = o.systems.map((s) => `<option ${hcur===s.system_id?"selected":""}>${esc(s.system_id)}</option>`).join("");
   const banner = o.new_databases ? `<div class="banner">✦ ${o.new_databases} new database${o.new_databases===1?"":"s"} started logging. Click a system to name ${o.new_databases===1?"it":"them"}.</div>` : "";
   const cards = o.systems.length ? o.systems.map((s) => {
     const files = (s.databases||[]);
@@ -611,6 +631,43 @@ function openModalHTML(title, html) {
   o.innerHTML = `<div class="panel"><div class="p-head"><span class="ttl">${title}</span><button class="x" onclick="this.closest('.overlay').classList.remove('open')">✕</button></div><div class="p-list">${html}</div></div>`;
   o.classList.add("open");
   o.onclick = (e) => { if (e.target === o) o.classList.remove("open"); };
+}
+
+// ---------- history (read-time, cross-dimensional) ----------
+function histRow(it) {
+  const when = it.ts.replace("T"," ").slice(0,19);
+  if (it.changes) { // record mode: before -> after
+    const lines = it.changes.map((c) => `<div><b>${esc(c.field)}</b>: <span style="color:var(--muted)">${esc(String(c.from))}</span> → ${esc(String(c.to))}</div>`).join("")
+      || `<div class="quiet" style="padding:0">${esc(it.action)}</div>`;
+    return `<div class="row" style="align-items:flex-start"><span class="t" style="width:56px">${esc(when.slice(5,16))}</span>
+      <span class="sys">${esc(it.who||"")}</span><div class="main" style="white-space:normal">${lines}</div></div>`;
+  }
+  // list mode
+  return `<div class="row" onclick="recordHistory('${esc($("hSystem").value)}','${esc(it.table||"")}',${it.record_id})" style="cursor:pointer">
+    <span class="t" style="width:56px">${esc(when.slice(5,16))}</span>
+    <span class="sys">${esc(it.who||"")}</span>
+    <span class="main">${esc(it.table||"")} #${it.record_id ?? "?"} <span class="did">${esc(it.fields.join(", ")||it.message||it.action)}</span></span></div>`;
+}
+async function runHistory(params) {
+  $("hStatus").textContent = "…";
+  const qs = new URLSearchParams(params).toString();
+  const d = await j("/api/history?" + qs);
+  $("history").innerHTML = d.items.length
+    ? `<div class="feed">${d.items.map(histRow).join("")}</div>`
+    : '<div class="quiet">No matching changes.</div>';
+  $("hStatus").textContent = `${d.count} ${d.mode==="record"?"changes to this record":"results"}`;
+}
+$("hGo").onclick = () => {
+  const p = { system_id:$("hSystem").value };
+  for (const [k,id] of [["actor","hActor"],["table","hTable"],["field","hField"],["q","hValue"]]) { const v=$(id).value.trim(); if(v) p[k]=v; }
+  if ($("hSince").value) p.since = $("hSince").value + "T00:00:00Z";
+  runHistory(p);
+};
+function recordHistory(system, table, record_id) {
+  // jump to History view, scoped to one record's before->after timeline
+  document.querySelector('.navitem[data-v="history"]').click();
+  $("hSystem").value = system; $("hTable").value = table; $("hField").value=""; $("hActor").value=""; $("hValue").value="";
+  runHistory({ system_id: system, table, record_id });
 }
 
 // ---------- warnings ----------

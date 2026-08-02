@@ -96,12 +96,10 @@ export function appendBatch(db, systemId, entries) {
 // With expectSeq/expectHash (a stored FileMaker anchor), also reports whether
 // the chain still matches that anchor: intact through expectSeq AND the stored
 // hash there equals the anchored one.
-export function verifyRange(db, systemId, { fromSeq = 1, expectSeq = null, expectHash = null } = {}) {
-  const rows = db.prepare(
-    `SELECT seq, system_id, event_id, ts_client, ts_server, category, action, payload_json, prev_hash, entry_hash
-     FROM log_entries WHERE system_id = ? AND seq >= ? ORDER BY seq`
-  ).all(systemId, fromSeq);
-
+//
+// Streams in bounded batches so memory stays flat whether the chain is 170 or
+// 170 million entries. (Loading the whole chain at once OOMs a small box.)
+export function verifyRange(db, systemId, { fromSeq = 1, expectSeq = null, expectHash = null, batch = 10000 } = {}) {
   let prevHash = GENESIS;
   if (fromSeq > 1) {
     const prev = db.prepare(
@@ -117,16 +115,25 @@ export function verifyRange(db, systemId, { fromSeq = 1, expectSeq = null, expec
   if (prevHash === null) {
     valid = false; firstBadSeq = fromSeq - 1;
   } else {
-    for (const row of rows) {
-      checked++;
-      // Density: a gap in seq means entries vanished.
-      if (row.seq !== expectedSeq) { valid = false; firstBadSeq = expectedSeq; break; }
-      if (row.prev_hash !== prevHash || entryHash(prevHash, row) !== row.entry_hash) {
-        valid = false; firstBadSeq = row.seq; break;
+    const stmt = db.prepare(
+      `SELECT seq, system_id, event_id, ts_client, ts_server, category, action, payload_json, prev_hash, entry_hash
+       FROM log_entries WHERE system_id = ? AND seq >= ? AND seq < ? ORDER BY seq`
+    );
+    let start = fromSeq;
+    outer: for (;;) {
+      const rows = stmt.all(systemId, start, start + batch); // at most `batch` rows in memory
+      if (!rows.length) break;
+      for (const row of rows) {
+        checked++;
+        if (row.seq !== expectedSeq) { valid = false; firstBadSeq = expectedSeq; break outer; }
+        if (row.prev_hash !== prevHash || entryHash(prevHash, row) !== row.entry_hash) {
+          valid = false; firstBadSeq = row.seq; break outer;
+        }
+        if (expectSeq !== null && row.seq === Number(expectSeq)) anchorSeen = row.entry_hash;
+        prevHash = row.entry_hash;
+        expectedSeq++;
       }
-      if (expectSeq !== null && row.seq === Number(expectSeq)) anchorSeen = row.entry_hash;
-      prevHash = row.entry_hash;
-      expectedSeq++;
+      start += batch;
     }
   }
 
