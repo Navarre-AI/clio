@@ -91,21 +91,32 @@ function recordReject(systemId, code, message, snippet) {
 
 // ---- auth middlewares -------------------------------------------------------
 
+// Reads (head/verify with a key) stay strict: an unknown key gets 401.
 function keyAuth(req, res, next) {
   const key = req.params?.key || bearer(req) || (req.query.key ? String(req.query.key) : "");
-  if (!key) {
-    // A logging tool must never swallow a failure. Record every rejected post.
-    if (req.method === "POST") recordReject(null, "no_api_key", "post with no API key", JSON.stringify(req.body || "").slice(0, 200));
-    return fail(res, 401, "unauthorized", "API key required (Bearer header, URL path, or ?key=).");
-  }
-  const row = db.prepare(
-    "SELECT id, system_id, label FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL"
-  ).get(sha256Hex(key));
-  if (!row) {
-    if (req.method === "POST") recordReject(null, "unknown_api_key", `key ${key.slice(0, 16)}… not recognized`, JSON.stringify(req.body || "").slice(0, 200));
-    return fail(res, 401, "unauthorized", "Unknown or revoked API key.");
-  }
+  if (!key) return fail(res, 401, "unauthorized", "API key required (Bearer header, URL path, or ?key=).");
+  const row = db.prepare("SELECT id, system_id, label FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL").get(sha256Hex(key));
+  if (!row) return fail(res, 401, "unauthorized", "Unknown or revoked API key.");
   req.system = { systemId: row.system_id, keyId: row.id, label: row.label };
+  next();
+}
+
+// The Unfiled catch-all: a logging tool NEVER drops data. Its rows are stored
+// like any other, and it exists so nothing sent to /v1/log/<anything> is lost.
+function ensureUnfiled() {
+  db.prepare("INSERT INTO systems (system_id, label) VALUES ('unfiled', 'Unfiled') ON CONFLICT(system_id) DO NOTHING").run();
+}
+// INGEST auth: no matter what follows /v1/log/, log the data. A valid key files
+// under its system; an unknown or missing key files under "Unfiled" with the
+// attempted key recorded, so the admin can adopt it into the right system later.
+function ingestAuth(req, res, next) {
+  const key = req.params?.key || bearer(req) || (req.query.key ? String(req.query.key) : "");
+  const row = key ? db.prepare("SELECT id, system_id, label FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL").get(sha256Hex(key)) : null;
+  if (row) { req.system = { systemId: row.system_id, keyId: row.id, label: row.label }; return next(); }
+  ensureUnfiled();
+  req.system = { systemId: "unfiled", unfiledKey: key ? key.slice(0, 24) : "(none)" };
+  recordReject(null, key ? "unknown_api_key" : "no_api_key",
+    `logged to Unfiled (key ${key ? key.slice(0, 16) + "…" : "missing"})`, "");
   next();
 }
 
@@ -232,6 +243,7 @@ function ingest(req, res) {
   const systemId = req.system.systemId;
   if (looksLikeTxn(req.body)) return ingestTxn(req, res);
   const entries = normalizeBody(req.body);
+  if (req.system.unfiledKey && Array.isArray(entries)) for (const e of entries) { if (e.payload_json && typeof e.payload_json === "object") e.payload_json._unfiled_key = req.system.unfiledKey; }
   if (!Array.isArray(entries) || entries.length === 0) {
     recordReject(systemId, "bad_request", "unrecognized body shape", JSON.stringify(req.body).slice(0, 300));
     return fail(res, 400, "bad_request", "Body must be a transaction dump, { entries: [...] }, or one flat { category, action, payload } event.");
@@ -245,8 +257,8 @@ function ingest(req, res) {
   res.json(ok(echoData(systemId, entries, result, entries.length > 1 ? "batch" : "event")));
 }
 
-app.post("/v1/log", keyAuth, ingest);
-app.post("/v1/log/:key", keyAuth, ingest); // key-in-URL: zero headers from FileMaker
+app.post("/v1/log", ingestAuth, ingest);
+app.post("/v1/log/:key", ingestAuth, ingest); // key-in-URL: unknown key -> Unfiled, never dropped
 
 // OnWindowTransaction ingest: FileMaker POSTs the trigger's parameter
 // UNTOUCHED — { "File" : { "Table" : [ [ "Op", recId, contextFieldValue ], ... ] } }.
@@ -363,6 +375,7 @@ function ingestTxn(req, res) {
     return fail(res, 400, "bad_request", "Body must be the OnWindowTransaction JSON, posted as-is.");
   }
   if (entries.length === 0) return res.json(ok({ accepted: 0, duplicates: 0, head: head(db, systemId) })); // Find-mode empty firing
+  if (req.system.unfiledKey) for (const e of entries) e.payload_json._unfiled_key = req.system.unfiledKey;
 
   let collapsed = 0;
   if (entries.length > BULK_THRESHOLD) {
@@ -413,8 +426,8 @@ function echoData(systemId, entries, result, kind, collapsed = 0) {
   };
 }
 
-app.post("/v1/txn", keyAuth, ingestTxn);
-app.post("/v1/txn/:key", keyAuth, ingestTxn);
+app.post("/v1/txn", ingestAuth, ingestTxn);
+app.post("/v1/txn/:key", ingestAuth, ingestTxn);
 
 // ---- chain reads ------------------------------------------------------------
 
