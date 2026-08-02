@@ -93,11 +93,18 @@ function recordReject(systemId, code, message, snippet) {
 
 function keyAuth(req, res, next) {
   const key = req.params?.key || bearer(req) || (req.query.key ? String(req.query.key) : "");
-  if (!key) return fail(res, 401, "unauthorized", "API key required (Bearer header, URL path, or ?key=).");
+  if (!key) {
+    // A logging tool must never swallow a failure. Record every rejected post.
+    if (req.method === "POST") recordReject(null, "no_api_key", "post with no API key", JSON.stringify(req.body || "").slice(0, 200));
+    return fail(res, 401, "unauthorized", "API key required (Bearer header, URL path, or ?key=).");
+  }
   const row = db.prepare(
     "SELECT id, system_id, label FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL"
   ).get(sha256Hex(key));
-  if (!row) return fail(res, 401, "unauthorized", "Unknown or revoked API key.");
+  if (!row) {
+    if (req.method === "POST") recordReject(null, "unknown_api_key", `key ${key.slice(0, 16)}… not recognized`, JSON.stringify(req.body || "").slice(0, 200));
+    return fail(res, 401, "unauthorized", "Unknown or revoked API key.");
+  }
   req.system = { systemId: row.system_id, keyId: row.id, label: row.label };
   next();
 }
@@ -137,6 +144,13 @@ function requireSystemId(req, res) {
 
 const app = express();
 app.disable("x-powered-by");
+app.set("trust proxy", true); // behind Fly's proxy: honor x-forwarded-proto so req.protocol is https
+
+// Every URL Clio hands out MUST be https: Fly 301-redirects http, and a
+// redirect drops the POST body, so an http log URL silently fails.
+function publicUrl(req, path) { return `https://${req.get("host")}${path}`; }
+// Clean, complete slug for a system id from a name (no truncation).
+function slugify(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63) || "system"; }
 
 app.use((req, res, next) => {
   res.locals.requestId = randomBytes(4).toString("hex");
@@ -858,14 +872,14 @@ app.post("/api/databases/place", (req, res) => {
     return res.json({ ok: true });
   }
   // own: create/keep a system named after the file, hand back a fresh key + URL
-  const newSid = String(name || file_name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || file_name;
+  const newSid = slugify(name || file_name);
   upsertSystem(newSid, { label: name || file_name });
   db.prepare("UPDATE databases SET placed = 1, system_display = ?, friendly_name = COALESCE(?, friendly_name) WHERE system_id = ? AND file_name = ?")
     .run(newSid, name || file_name, system_id, file_name);
   const key = generateApiKey(); const id = randomUUID();
   db.prepare("INSERT INTO api_keys (id, system_id, label, key_hash) VALUES (?, ?, ?, ?)").run(id, newSid, name || file_name, sha256Hex(key));
   selfLog("admin.system_created", { system_id: newSid, from_file: file_name });
-  res.json({ ok: true, system_id: newSid, url: `${req.protocol}://${req.get("host")}/v1/log/${key}` });
+  res.json({ ok: true, system_id: newSid, url: publicUrl(req, `/v1/log/${key}`) });
 });
 app.post("/api/databases/unlink", (req, res) => {
   const { system_id, file_name } = req.body || {};

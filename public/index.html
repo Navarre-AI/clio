@@ -152,6 +152,7 @@
 
   <!-- Live -->
   <div class="view" id="v-live"><div class="wrap wide">
+    <div id="rejectBanner"></div>
     <div class="feedbar">
       <input class="input" id="feedFilter" placeholder="filter…" style="width:220px">
       <select class="input" id="feedSystem" style="width:auto"><option value="">all systems</option></select>
@@ -373,6 +374,10 @@ function renderThread(){ $("thread").innerHTML=askMessages.map((m)=>m.role==="us
 async function askSend(){ const q=$("askInput").value.trim(); if(!q)return; $("askInput").value=""; askMessages.push({role:"user",content:q}); renderThread(); $("thread").insertAdjacentHTML("beforeend",`<div class="msg meta" id="thinking">reading the logs…</div>`); const r=await post("/api/ask",{messages:askMessages.map((m)=>({role:m.role,content:m.content}))}); $("thinking")?.remove(); askMessages.push({role:"assistant",content:r.error?("Something went wrong: "+r.error):(r.reply||"…"),artifacts:r.artifacts||[]}); renderThread(); }
 $("askBtn").onclick=askSend; $("askInput").onkeydown=(e)=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askSend();}};
 async function pollPulse(){ try{ const p=await j("/api/pulse"); if(p.summary){ $("pulseText").textContent=p.summary; $("pulseMeta").textContent=`${p.stats.events_last_24h} events / 24h · ${p.stats.open_warnings} open`; } }catch{} }
+// Rejected posts (bad API key, bad body) are surfaced, never silent.
+async function pollRejects(){ try{ const {rejects}=await j("/api/rejects"); if(!rejects||!rejects.length){ $("rejectBanner").innerHTML=""; return; }
+  const recent=rejects.slice(0,4).map((r)=>`<div style="font-size:12px">${localTime(r.ts)} · <b>${esc(r.code)}</b> · ${esc(r.message||"")}</div>`).join("");
+  $("rejectBanner").innerHTML=`<div class="banner" style="background:var(--critbg);border-color:var(--critc);color:var(--critc);flex-direction:column;align-items:flex-start;gap:4px"><div><b>${rejects.length} rejected post${rejects.length===1?"":"s"}</b> — something tried to log but was refused (usually a wrong API key or a bad URL):</div>${recent}</div>`; }catch{} }
 
 // ---- Live feed (SSE-driven) ----
 let latestTs=null; const seen=new Set(); const feedRows={};
@@ -456,7 +461,8 @@ async function delRule(id){ await j("/api/rules/"+id,{method:"DELETE"}); loadRul
 // ---- boot + live ----
 (async()=>{
   await loadOverview(); renderThread(); renderRuleThread(); renderHistFilters();
-  loadWarnings(); pollPulse(); pollFeed();
+  loadWarnings(); pollPulse(); pollFeed(); pollRejects();
+  setInterval(pollRejects,15000);
   setInterval(pollPulse,30000);
   setInterval(()=>{ loadOverview(); loadWarnings(); },60000);
   // SSE: refresh feed the instant anything lands; fall back to polling
