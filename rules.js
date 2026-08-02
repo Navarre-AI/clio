@@ -34,6 +34,10 @@ function buildWhere(db, match, sinceIso) {
   if (match.action_like) { where.push("action LIKE ?"); params.push(match.action_like); }
   if (match.category_like) { where.push("category LIKE ?"); params.push(match.category_like); }
   if (match.actor) { where.push("json_extract(payload_json, '$.account_name') = ?"); params.push(match.actor); }
+  if (Array.isArray(match.files) && match.files.length) {
+    where.push(`json_extract(payload_json, '$.file') IN (${match.files.map(() => "?").join(",")})`);
+    params.push(...match.files.map(String));
+  }
   if (Number(match.rows_gte) > 0) {
     where.push("CAST(json_extract(payload_json, '$.rows') AS INTEGER) >= ?"); params.push(Number(match.rows_gte));
   }

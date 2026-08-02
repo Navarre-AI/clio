@@ -150,6 +150,39 @@
   .toggle { position:relative; width:38px; height:22px; border-radius:12px; background:var(--line); cursor:pointer; flex:none; transition:background .15s; }
   .toggle.on { background:var(--good); } .toggle .knob { position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; }
   .toggle.on .knob { left:18px; }
+  /* Ask dashboard: stat tiles + single-hue bars */
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin:10px 0; }
+  .kpi { background:var(--panel2); border:1px solid var(--line); border-radius:13px; padding:12px 14px; }
+  .kpi .k { text-transform:uppercase; letter-spacing:.06em; font-size:10.5px; font-weight:600; color:var(--muted); }
+  .kpi .v { font-size:24px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:3px; }
+  .chart { margin:10px 0; }
+  .chart-h { font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
+  .barrow { display:flex; align-items:center; gap:10px; margin:5px 0; font-size:12.5px; }
+  .barrow .bl { width:130px; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+  .barrow .bt { flex:1; height:16px; background:var(--panel2); border-radius:5px; overflow:hidden; }
+  .barrow .bf { display:block; height:100%; border-radius:5px; background:linear-gradient(90deg,var(--accent2),var(--accent)); }
+  .barrow .bv { width:52px; flex:none; text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+  /* CRUD tag colors */
+  .tag.c-create { background:var(--goodbg); color:var(--good); }
+  .tag.c-read   { background:var(--panel2); color:var(--muted); }
+  .tag.c-update { background:var(--warnbg); color:var(--warnc); }
+  .tag.c-delete { background:var(--critbg); color:var(--critc); }
+  .tag.c-login  { background:#e6eef7; color:#3a6ea5; } html.dark .tag.c-login { background:#1e2a3a; color:#8ab4e0; }
+  .tag.c-export { background:var(--offbg); color:var(--accent); }
+  .tag.c-admin  { background:#efe3f5; color:#7a3ea0; } html.dark .tag.c-admin { background:#2e2440; color:#c9a6e6; }
+  .tag.c-other  { background:var(--panel2); color:var(--dim); }
+  /* Live row detail */
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:13px; }
+  .kv .kk { color:var(--muted); white-space:nowrap; }
+  .kv .kvv { word-break:break-word; }
+  .rawbox { font-family:ui-monospace,Menlo,monospace; font-size:11.5px; background:var(--panel2); border-radius:8px; padding:10px; white-space:pre-wrap; word-break:break-all; margin-top:10px; }
+  /* Arrival banner */
+  .banner { background:var(--goodbg); border:1px solid var(--good); color:var(--good); border-radius:10px; padding:9px 13px; font-size:13px; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+  .dbrow { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); }
+  .dbrow .dbn { flex:1; } .dbrow .dbc { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+  .fsel { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .fsel label { font-size:12px; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:3px 9px; cursor:pointer; }
+  .legacy { color:var(--dim); font-size:11px; }
 </style>
 </head>
 <body>
@@ -227,24 +260,17 @@
       <button data-t="rules" class="on">Rules</button>
       <button data-t="channels">Channels</button>
       <button data-t="ai">AI</button>
-      <button data-t="systems">Systems &amp; keys</button>
+      <button data-t="systems">Systems</button>
       <button data-t="about">About</button>
     </div>
     <div class="p-list">
       <!-- Rules tab -->
       <div id="tab-rules">
-        <div class="scard" style="margin-bottom:14px">
-          <div class="scard-h">Describe a rule <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--dim)">— Clio drafts it and shows how often it would have fired</span></div>
-          <div id="ruleThread" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px"></div>
-          <div class="chips" id="ruleStarters"></div>
-          <div class="setrow" style="margin-top:10px">
-            <input class="input" id="ruleInput" placeholder="e.g. tell me about weekend logins, or 20+ deletes in an hour is a HIPAA break">
-            <button class="btn" id="ruleSend">Send</button>
-          </div>
-          <div id="ruleDraft"></div>
+        <div class="setrow" style="justify-content:space-between">
+          <div class="scard-h" style="margin:0">Rules</div>
+          <button class="btn" id="newRuleBtn">+ New rule</button>
         </div>
-        <div class="scard-h">Active rules</div>
-        <div id="rulesList"></div>
+        <div id="rulesList" style="margin-top:12px"></div>
       </div>
       <!-- Channels tab -->
       <div id="tab-channels" style="display:none">
@@ -267,31 +293,26 @@
       <div id="tab-ai" style="display:none">
         <div class="scard">
           <div class="scard-h">Model</div>
-          <div class="field"><span>Clio uses this model for the pulse, ask-the-logs, and rule authoring</span>
+          <div class="field"><span>Used for the pulse, ask-the-logs, and rule authoring</span>
             <select class="input" id="aiModel"></select></div>
           <div class="hint" id="aiState"></div>
         </div>
-        <div class="scard" style="margin-top:12px">
-          <div class="scard-h">Zero hallucination</div>
-          <div style="font-size:13px;color:var(--muted)">The model never invents a number. It writes SELECT-only SQL against your logs; a deterministic engine runs it, and every rule fires by fixed logic, the same way every time.</div>
-        </div>
       </div>
-      <!-- Systems & keys tab -->
+      <!-- Systems tab (register + connection codes) -->
       <div id="tab-systems" style="display:none">
         <div id="adminLocked" class="setrow">
-          <input class="input" id="adminToken" placeholder="admin token" style="width:260px">
+          <input class="input" id="adminToken" placeholder="install password" style="width:260px" type="password">
           <button class="btn" id="adminUnlock">Unlock</button>
         </div>
         <div id="adminPanel" style="display:none">
           <div class="scroll"><table class="tbl" id="adminSystems"></table></div>
-          <div class="scard-h" style="margin-top:18px">Register a system / mint a key</div>
+          <div class="scard-h" style="margin-top:18px">Add a system, get its connection code</div>
           <div class="setrow">
             <input class="input" id="regId" placeholder="system id" style="width:120px">
-            <input class="input" id="regLabel" placeholder="label" style="width:130px">
+            <input class="input" id="regLabel" placeholder="friendly name" style="width:130px">
             <input class="input" id="regServer" placeholder="FM server" style="width:150px">
-            <input class="input" id="regFile" placeholder="file(s)" style="width:120px">
           </div>
-          <div class="setrow"><button class="btn" id="regMint">Register + mint key</button></div>
+          <div class="setrow"><button class="btn" id="regMint">Add + get connection code</button></div>
           <div id="mintResult"></div>
         </div>
       </div>
@@ -300,7 +321,22 @@
         <div class="scard"><div class="scard-h">Clio</div>
           <div id="aboutBox" style="font-size:13.5px;color:var(--muted)"></div>
         </div>
+        <div class="scard" style="margin-top:12px"><div class="scard-h">How it stays honest</div>
+          <div style="font-size:13px;color:var(--muted)">The model never invents a number. It writes read-only queries against your logs; a deterministic engine runs them, and every rule fires by fixed logic, the same way every time.</div>
+        </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- New-rule modal -->
+<div class="overlay" id="ruleModal">
+  <div class="panel" style="height:auto;max-height:86vh">
+    <div class="p-head"><span class="ttl">New rule</span><button class="x" id="ruleModalClose">✕</button></div>
+    <div class="p-list">
+      <div id="ruleThread" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px"></div>
+      <div class="setrow"><input class="input" id="ruleInput" placeholder="Describe what you want to watch for"><button class="btn" id="ruleAsk">Ask</button></div>
+      <div id="ruleDraft"></div>
     </div>
   </div>
 </div>
@@ -329,14 +365,19 @@ document.querySelectorAll(".navitem").forEach((n) => n.onclick = () => {
 
 // ---------- prefs + classification ----------
 let prefs = { watch:[], mute:[] };
-function classify(a) {
-  if (/error|fail|denied|invalid|tamper/i.test(a)) return "err";
-  if (/\.deleted?$/i.test(a)) return "del";
-  if (/export|print|pdf|save/i.test(a)) return "exp";
-  if (/admin|key_|privil|account/i.test(a)) return "adm";
-  if (/\.new$|creat/i.test(a)) return "new";
-  if (/modif|edit|change/i.test(a)) return "mod";
-  return "other";
+// CRUD-first taxonomy: Create / Read / Update / Delete, plus Login, Export,
+// Admin. Returns { cls, tag } where tag is the short pip label.
+function crud(action, payload) {
+  const a = (action || "").toLowerCase();
+  const type = (payload && (payload.type || "")).toLowerCase();
+  if (/login|open database|sign|logout|close database/.test(a + " " + type)) return { cls: "c-login", tag: "login" };
+  if (/admin|key_|privil|account.created|archive|purge/.test(a)) return { cls: "c-admin", tag: "admin" };
+  if (/export|print|pdf|\.save/.test(a)) return { cls: "c-export", tag: "export" };
+  if (/\.deleted?$|delete record/.test(a) || type === "delete") return { cls: "c-delete", tag: "delete" };
+  if (/\.new$|create|\.created$/.test(a)) return { cls: "c-create", tag: "create" };
+  if (/modif|edit|change|update/.test(a) || type === "edit record") return { cls: "c-update", tag: "update" };
+  if (/view|read/.test(a) || type === "read") return { cls: "c-read", tag: "read" };
+  return { cls: "c-other", tag: "·" };
 }
 const matchesAny = (s, pats) => (pats||[]).some((p) => p && s.toLowerCase().includes(p.toLowerCase()));
 
@@ -344,10 +385,36 @@ const matchesAny = (s, pats) => (pats||[]).some((p) => p && s.toLowerCase().incl
 const askMessages = [];
 const ASK_STARTERS = ["What happened today?", "Any weekend or after-hours activity?", "Who deleted the most records this week?", "Show logins by person"];
 function renderMd(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>"); }
-function tableHtml(a) {
-  if (!a.columns || !a.rows) return "";
-  return `<div class="scroll"><table><tr>${a.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
-    a.rows.slice(0, 50).map((r) => `<tr>${a.columns.map((c) => `<td>${esc(r[c])}</td>`).join("")}</tr>`).join("") + "</table></div>";
+// Number formatting: compact so 2,000,000 -> "2.0M"; plain integers stay plain.
+// Years (1900-2100) are labels, never quantities — never compact them.
+function fmtN(n) { n = Number(n); return Number.isFinite(n) ? n.toLocaleString() : String(n); }
+function fmtC(n) { n = Number(n);
+  if (!Number.isFinite(n)) return String(n);
+  const a = Math.abs(n);
+  if (a >= 1e9) return (n/1e9).toFixed(1).replace(/\.0$/,"") + "B";
+  if (a >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,"") + "M";
+  if (a >= 1e4) return (n/1e3).toFixed(1).replace(/\.0$/,"") + "K";
+  return fmtN(n);
+}
+// One artifact = one visual block (kpi tiles, bar chart, or small table).
+function artifactHtml(a) {
+  if (a.type === "kpi") {
+    return `<div class="kpis">${a.cells.map((c) => `<div class="kpi"><div class="k">${esc(c.label)}</div><div class="v" title="${fmtN(c.value)}">${fmtC(c.value)}</div></div>`).join("")}</div>`;
+  }
+  if (a.type === "bar") {
+    const max = Math.max(1, ...a.series.map((s) => s.value));
+    return `<div class="chart">${a.title ? `<div class="chart-h">${esc(a.title)}</div>` : ""}` +
+      a.series.map((s) => `<div class="barrow" title="${esc(s.label)}: ${fmtN(s.value)}">
+        <span class="bl">${esc(s.label)}</span>
+        <span class="bt"><span class="bf" style="width:${Math.max(2, Math.round(s.value/max*100))}%"></span></span>
+        <span class="bv">${fmtC(s.value)}</span></div>`).join("") + `</div>`;
+  }
+  if (a.type === "table" || (a.columns && a.rows)) {
+    const cols = a.columns || [];
+    return `<div class="scroll">${a.title ? `<div class="chart-h">${esc(a.title)}</div>` : ""}<table><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
+      (a.rows||[]).slice(0, 20).map((r) => `<tr>${cols.map((c) => `<td>${esc(r[c])}</td>`).join("")}</tr>`).join("") + "</table></div>";
+  }
+  return "";
 }
 function askStarters() {
   if (askMessages.length) return "";
@@ -356,7 +423,7 @@ function askStarters() {
 function renderThread() {
   $("thread").innerHTML = askMessages.map((m) => m.role === "user"
     ? `<div class="msg user">${esc(m.content)}</div>`
-    : `<div class="msg bot">${renderMd(m.content)}${(m.artifacts||[]).map(tableHtml).join("")}</div>`).join("")
+    : `<div class="msg bot">${renderMd(m.content)}${(m.artifacts||[]).map(artifactHtml).join("")}</div>`).join("")
     + askStarters();
   $("thread").lastElementChild?.scrollIntoView({ block:"end" });
 }
@@ -403,14 +470,36 @@ function humanLine(e) {
   }
   return { text:e.action, who };
 }
+const feedRows = {}; // seq-key -> entry, so a click can open the detail
 function rowHtml(e, fresh) {
-  const tag=classify(e.action), h=humanLine(e);
+  let p={}; try{p=JSON.parse(e.payload_json);}catch{}
+  const c=crud(e.action, p), h=humanLine(e);
   const muted = h.mute || e.system_id==="clio" || matchesAny(e.action, prefs.mute);
   const watched = matchesAny(e.action, prefs.watch);
   const main = h.who ? `${esc(h.who)} <span class="did">${esc(h.text)}</span>` : esc(h.text);
-  return `<div class="row ${fresh?"fresh":""} ${watched?"watched":""} ${muted?"muted":""}" data-sys="${esc(e.system_id)}" data-muted="${muted?1:0}" title="${esc(e.payload_json)}">
-    <span class="t">${ago(e.ts_server)}</span><span class="tag ${tag}">${tag==="other"?"·":tag}</span>
+  const key = e.system_id+"#"+e.seq; feedRows[key]=e;
+  return `<div class="row ${fresh?"fresh":""} ${watched?"watched":""} ${muted?"muted":""}" data-sys="${esc(e.system_id)}" data-muted="${muted?1:0}" onclick="openEntry('${esc(key)}')" style="cursor:pointer">
+    <span class="t">${ago(e.ts_server)}</span><span class="tag ${c.cls}">${c.tag}</span>
     <span class="sys">${esc(e.system_id)}</span><span class="main">${main}</span><span class="act">${esc(e.action)}</span></div>`;
+}
+// Click a row: formatted key/value detail, with a button to reveal raw JSON.
+function openEntry(key) {
+  const e = feedRows[key]; if (!e) return;
+  let p={}; try{p=JSON.parse(e.payload_json);}catch{}
+  const flat = {}; const walk = (o, pre="") => { for (const [k,v] of Object.entries(o||{})) {
+    if (v && typeof v==="object" && !Array.isArray(v)) walk(v, pre+k+" · "); else flat[pre+k]=v; } };
+  walk(p);
+  const rows = Object.entries(flat).filter(([k])=>!/^changed/.test(k)).map(([k,v]) =>
+    `<div class="kk">${esc(k)}</div><div class="kvv">${esc(String(v))}</div>`).join("");
+  const changed = p.changed ? `<div class="chart-h" style="margin-top:12px">What changed</div><div class="kv">` +
+    Object.entries(p.changed).filter(([f])=>!/^z_/.test(f)).map(([f,v]) =>
+      `<div class="kk">${esc(f)}</div><div class="kvv">${esc(String(v.from))} → ${esc(String(v.to))}</div>`).join("") + `</div>` : "";
+  openModalHTML(esc(e.action), `
+    <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px">${esc(e.system_id)} · #${e.seq} · ${esc(e.ts_server.replace("T"," ").slice(0,19))}</div>
+    ${changed}
+    <div class="chart-h" style="margin-top:12px">Details</div><div class="kv">${rows || '<div class="kvv">No payload.</div>'}</div>
+    <div style="margin-top:14px"><button class="btn ghost sm" onclick="var b=this.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none'">Show raw JSON</button>
+      <div class="rawbox" style="display:none">${esc(JSON.stringify(p,null,2))}</div></div>`);
 }
 function applyFeedFilters() {
   const q=$("feedFilter").value.trim().toLowerCase(), sys=$("feedSystem").value, sm=$("showMuted").checked;
@@ -436,43 +525,84 @@ async function pollFeed() {
 }
 
 // ---------- systems ----------
+let lastOverview = { systems: [] };
 async function loadOverview() {
-  const o = await j("/api/overview");
+  const o = await j("/api/overview"); lastOverview = o;
   $("footInfo").textContent = `v${o.version} · AI ${o.ai?"on":"off"}`;
-  $("aboutBox").innerHTML = `Clio v${esc(o.version)} · AI ${o.ai?"on":"off"}<br>${esc(location.origin)}<br><br>Inviolate logs that live outside FileMaker. Append-only, hash-chained, anchored in your own file. The historian does not take edits from the people she is writing about.`;
+  $("aboutBox").innerHTML = `<b>Clio</b> v${esc(o.version)} · inviolate logs that live outside FileMaker.<br><br>` +
+    `Matt Navarre &nbsp;::&nbsp; <a href="https://www.navarre.ai" style="color:var(--accent2)">www.navarre.ai</a><br>` +
+    `Copyright © 2026 · Released under the MIT License.`;
   const sel=$("feedSystem"), cur=sel.value;
   sel.innerHTML = '<option value="">all systems</option>' + o.systems.map((s) => `<option ${cur===s.system_id?"selected":""}>${esc(s.system_id)}</option>`).join("");
-  $("systems").innerHTML = o.systems.length ? o.systems.map((s) => `
-    <div class="scard syscard" onclick="openSystem('${esc(s.system_id)}')">
-      <div class="sys">${esc(s.label||s.system_id)} ${s.open_warnings?`<span class="badge b-warn">${s.open_warnings}</span>`:""}</div>
-      <div class="where">${s.fm_file||s.fm_server?esc(s.fm_file||"?")+" on "+esc(s.fm_server||"?"):"&nbsp;"}</div>
-      <div class="hash">#${s.seq} · ${esc((s.entry_hash||"").slice(0,32))}${s.entry_hash?"…":""}</div>
-      <div class="meta">${s.entry_count} entries · last ${s.last_ts_server?ago(s.last_ts_server)+" ago":"never"}</div>
-    </div>`).join("") : '<div class="quiet">No systems yet. Register one in Settings → Systems &amp; keys, point it at POST /v1/log, and the chain starts itself.</div>';
+  const banner = o.new_databases ? `<div class="banner">✦ ${o.new_databases} new database${o.new_databases===1?"":"s"} started logging. Click a system to name ${o.new_databases===1?"it":"them"}.</div>` : "";
+  const cards = o.systems.length ? o.systems.map((s) => {
+    const files = (s.databases||[]);
+    const newDot = files.some((d)=>!d.acknowledged) ? '<span class="badge b-warn">new</span>' : "";
+    const filesLine = files.length ? files.map((d)=>esc(d.name)).join(", ") : (s.fm_server?esc(s.fm_server):"&nbsp;");
+    return `<div class="scard syscard" onclick="openSystem('${esc(s.system_id)}')">
+      <div class="sys">${esc(s.label||s.system_id)} ${s.open_warnings?`<span class="badge b-warn">${s.open_warnings}</span>`:""} ${newDot}</div>
+      <div class="where">${filesLine}${s.fm_server&&files.length?" · "+esc(s.fm_server):""}</div>
+      <div class="meta">${fmtN(s.entry_count)} entries since the beginning · last ${s.last_ts_server?ago(s.last_ts_server)+" ago":"never"}</div>
+    </div>`; }).join("") : '<div class="quiet">No systems yet. Add one in Settings → Systems, put its connection code in the script, and its log starts itself.</div>';
+  $("systems").innerHTML = banner + `<div class="cards">${cards}</div>`;
 }
 
 async function openSystem(sid) {
-  const [ov, logs, ver] = await Promise.all([ j("/api/overview"), j("/api/logs?system_id="+encodeURIComponent(sid)+"&limit=8"), j("/api/verify?system_id="+encodeURIComponent(sid)) ]);
-  const s = ov.systems.find((x) => x.system_id === sid) || { system_id: sid };
-  // redacted tail: show shape, mask payload values
-  const tail = (logs.entries||[]).map((e) => { const h=humanLine(e); const who=h.who?esc(h.who)+" ":""; return `<div class="row" style="box-shadow:none"><span class="t">${ago(e.ts_server)}</span><span class="tag ${classify(e.action)}">${classify(e.action)}</span><span class="main">${who}<span class="did">${esc(redact(h.text))}</span></span></div>`; }).join("") || '<div class="quiet">No entries yet.</div>';
+  const [logs, ver] = await Promise.all([ j("/api/logs?system_id="+encodeURIComponent(sid)+"&limit=8"), j("/api/verify?system_id="+encodeURIComponent(sid)) ]);
+  const s = lastOverview.systems.find((x) => x.system_id === sid) || { system_id: sid, databases: [] };
+  const files = s.databases || [];
+  const fileRows = files.length ? files.map((d) => `<div class="dbrow">
+      <input class="input dbn" data-file="${esc(d.file_name)}" value="${esc(d.name)}" style="padding:5px 9px">
+      <span class="dbc">${fmtN(d.entry_count)} entries</span>
+      ${!d.acknowledged?'<span class="badge b-warn">new</span>':""}</div>`).join("")
+    : '<div class="quiet">No database files seen yet.</div>';
+  const tail = (logs.entries||[]).map((e) => { let p={};try{p=JSON.parse(e.payload_json);}catch{} const c=crud(e.action,p), h=humanLine(e); const who=h.who?esc(h.who)+" ":""; return `<div class="row" style="box-shadow:none;cursor:default"><span class="t">${ago(e.ts_server)}</span><span class="tag ${c.cls}">${c.tag}</span><span class="main">${who}<span class="did">${esc(redact(h.text))}</span></span></div>`; }).join("") || '<div class="quiet">No entries yet.</div>';
   openModalHTML(esc(s.label||sid), `
-    <div class="scard"><div class="scard-h">Identity</div>
-      <div class="setrow"><label>System id</label><span>${esc(sid)}</span></div>
-      <div class="setrow"><label>FM server</label><span>${esc(s.fm_server||"—")}</span></div>
-      <div class="setrow"><label>File(s)</label><span>${esc(s.fm_file||"—")}</span></div>
+    <div class="scard"><div class="scard-h">Name &amp; server</div>
+      <div class="field"><span>Friendly name</span><input class="input" id="sysLabel" value="${esc(s.label||"")}" placeholder="${esc(sid)}"></div>
+      <div class="field"><span>FileMaker server</span><input class="input" id="sysServer" value="${esc(s.fm_server||"")}" placeholder="fm.example.com"></div>
+      <div class="setrow"><button class="btn sm" onclick="saveSystem('${esc(sid)}')">Save</button><span class="quiet" id="sysMsg" style="padding:0"></span></div>
     </div>
-    <div class="scard" style="margin-top:12px"><div class="scard-h">Chain</div>
-      <div class="setrow"><label>Head</label><span>#${s.seq||0}</span></div>
-      <div class="setrow"><label>Entries</label><span>${s.entry_count||0}</span></div>
-      <div class="setrow"><label>Verify</label><span class="badge ${ver.valid?"b-ok":"b-bad"}">${ver.valid?`intact · ${ver.checked} checked`:`BROKEN at #${ver.first_bad_seq}`}</span></div>
-      <div class="hash" style="margin-top:6px">${esc(s.entry_hash||"")}</div>
+    <div class="scard" style="margin-top:12px"><div class="scard-h">Database files <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--dim)">— one system, one connection code, however many files</span></div>
+      ${fileRows}
+      <div class="setrow" style="margin-top:8px"><button class="btn sm" onclick="saveFiles('${esc(sid)}')">Save names</button></div>
+    </div>
+    <div class="scard" style="margin-top:12px"><div class="scard-h">Log</div>
+      <div class="setrow"><label>Entries</label><span>${fmtN(s.entry_count||0)} since the beginning</span></div>
+      <div class="setrow"><label>Integrity</label><span class="badge ${ver.valid?"b-ok":"b-bad"}">${ver.valid?`intact · ${ver.checked} checked`:`BROKEN at #${ver.first_bad_seq}`}</span></div>
+      <div class="hash" style="margin-top:6px">head #${s.seq||0} · ${esc(s.entry_hash||"")}</div>
     </div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Recent activity <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--dim)">— values redacted</span></div>
       <div class="feed">${tail}</div>
+    </div>
+    <div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div>
+      <div class="setrow"><button class="btn ghost sm" onclick="archiveSystem('${esc(sid)}')">Archive log</button>
+        <span class="quiet" style="padding:0;flex:1">Snapshot + summary entry; nothing deleted.</span></div>
+      <div class="setrow"><button class="link danger" onclick="purgeSystem('${esc(sid)}')">Delete all log records…</button></div>
+      <div id="sysDanger"></div>
     </div>`);
 }
 function redact(t) { return String(t).replace(/"[^"]*"/g, '"•••"').replace(/\b\d[\d,.]{2,}\b/g, "•••"); }
+async function saveSystem(sid) {
+  await adminReq("PATCH", "/v1/admin/systems/"+encodeURIComponent(sid), { label:$("sysLabel").value.trim()||null, fm_server:$("sysServer").value.trim()||null });
+  $("sysMsg").textContent="Saved."; loadOverview();
+}
+async function saveFiles(sid) {
+  for (const inp of document.querySelectorAll("#adhoc .dbn")) {
+    await adminReq("PATCH", "/v1/admin/databases/"+encodeURIComponent(sid)+"/"+encodeURIComponent(inp.dataset.file), { friendly_name: inp.value.trim()||null, acknowledged:true });
+  }
+  loadOverview(); openSystem(sid);
+}
+async function archiveSystem(sid) {
+  const r = await adminReq("POST", "/v1/admin/systems/"+encodeURIComponent(sid)+"/archive", {});
+  if (r?.data?.summary) $("sysDanger").innerHTML = `<div class="banner" style="margin-top:8px">Archived ${r.data.summary.entries} entries. A summary entry was added to the log.</div>`;
+  loadOverview();
+}
+async function purgeSystem(sid) {
+  if (!confirm(`Permanently delete ALL log records for "${sid}"? Archive first if you want them kept.`)) return;
+  await adminReq("POST", "/v1/admin/systems/"+encodeURIComponent(sid)+"/purge", { confirm: sid });
+  document.getElementById("adhoc")?.classList.remove("open"); loadOverview();
+}
 
 // generic modal reuse: a lightweight second overlay built on the fly
 function openModalHTML(title, html) {
@@ -496,7 +626,8 @@ async function loadWarnings() {
     : '<div class="quiet">No open warnings. Quiet is good.</div>';
 }
 async function ackW(id) { await post("/api/warnings/"+id+"/ack"); loadWarnings(); loadOverview(); }
-$("viewActions").innerHTML = "";
+$("viewActions").innerHTML = '<button class="btn ghost sm" id="refreshBtn">↻ Refresh</button>';
+$("refreshBtn").onclick = () => { loadOverview(); loadWarnings(); pollFeed(); };
 
 // ---------- settings modal ----------
 $("settingsBtn").onclick = () => { $("settings").classList.add("open"); loadPrefsUI(); loadAI(); loadRules(); loadAdmin(); };
@@ -527,31 +658,36 @@ $("chTest").onclick = async () => {
 // AI
 async function loadAI() {
   const a = await j("/api/ai");
-  $("aiModel").innerHTML = a.models.map((m) => `<option value="${esc(m.id)}" ${m.id===a.model?"selected":""}>${esc(m.label)} — ${esc(m.note)}</option>`).join("");
-  $("aiState").textContent = a.available ? "Anthropic key detected." : "No Anthropic key set — the pulse falls back to plain counts and rule authoring is disabled. Set ANTHROPIC_API_KEY as a Fly secret.";
+  $("aiModel").innerHTML = a.models.map((m) => `<option value="${esc(m.id)}" ${m.id===a.model?"selected":""}>${esc(m.label)}${m.legacy?" (legacy)":""}</option>`).join("");
+  const legacyNow = a.models.find((m)=>m.id===a.model)?.legacy;
+  $("aiState").innerHTML = a.available
+    ? (legacyNow ? "You're on a legacy model. Newer ones are usually cheaper and sharper, consider switching." : "Live model list from Anthropic. Legacy models still work but get pricier as they age.")
+    : "No AI key set. The pulse falls back to plain counts and rule authoring is off. Set ANTHROPIC_API_KEY as a secret.";
 }
 $("aiModel").onchange = async () => { await post("/api/ai", { model:$("aiModel").value }); };
 
-// Rules — conversational author
-const ruleMessages = [];
-const RULE_STARTERS = ["Tell me about weekend logins", "Flag 20+ deletes in an hour (HIPAA)", "Any big exports over 1000 rows", "When temp accounts log in after hours"];
+// Rules — conversational author in a focused modal
+let ruleMessages = [], pendingDraft = null;
 function renderRuleThread() {
   $("ruleThread").innerHTML = ruleMessages.map((m) => m.role==="user"
     ? `<div class="msg user" style="max-width:100%">${esc(m.content)}</div>`
     : `<div class="msg bot" style="max-width:100%">${renderMd(m.content)}</div>`).join("");
-  $("ruleStarters").innerHTML = ruleMessages.length ? "" : RULE_STARTERS.map((s) => `<span class="chip" onclick="ruleSend('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</span>`).join("");
+  $("ruleThread").lastElementChild?.scrollIntoView({ block:"end" });
 }
-async function ruleSend(q) {
-  q = q || $("ruleInput").value.trim(); if (!q) return;
+function openRuleModal() { ruleMessages=[]; pendingDraft=null; $("ruleDraft").innerHTML=""; $("ruleInput").value=""; renderRuleThread(); $("ruleModal").classList.add("open"); setTimeout(()=>$("ruleInput").focus(),50); }
+$("newRuleBtn").onclick = openRuleModal;
+$("ruleModalClose").onclick = () => $("ruleModal").classList.remove("open");
+$("ruleModal").onclick = (e) => { if (e.target===$("ruleModal")) $("ruleModal").classList.remove("open"); };
+async function ruleAsk() {
+  const q = $("ruleInput").value.trim(); if (!q) return;
   $("ruleInput").value=""; ruleMessages.push({ role:"user", content:q }); renderRuleThread();
   const r = await post("/api/rules/author", { messages: ruleMessages });
   if (r.error) { ruleMessages.push({ role:"assistant", content:"Error: "+r.error }); renderRuleThread(); return; }
   ruleMessages.push({ role:"assistant", content: r.reply || "…" }); renderRuleThread();
   if (r.draft) showDraft(r.draft, r.preview);
 }
-$("ruleSend").onclick = () => ruleSend();
-$("ruleInput").onkeydown = (e) => { if (e.key==="Enter") ruleSend(); };
-let pendingDraft = null;
+$("ruleAsk").onclick = ruleAsk;
+$("ruleInput").onkeydown = (e) => { if (e.key==="Enter") ruleAsk(); };
 function showDraft(draft, preview) {
   pendingDraft = draft;
   const fired = preview ? `Would have fired <b>${preview.would_fire}</b> time${preview.would_fire===1?"":"s"} in the last ${preview.days} days (${preview.total_matches} matching events).` : "";
@@ -560,26 +696,54 @@ function showDraft(draft, preview) {
     <div style="font-weight:600">${esc(draft.name)} <span class="badge b-${esc(draft.severity)}">${esc(draft.severity)}</span> ${draft.class?`<span class="badge b-hipaa">${esc(draft.class)}</span>`:""}</div>
     <div style="font-size:13px;color:var(--muted);margin:4px 0 8px">${esc(draft.description)}</div>
     <div class="hint">${fired}</div>
-    <div class="setrow" style="margin-top:10px"><button class="btn" id="ruleSaveBtn">Save rule</button><button class="btn ghost" onclick="$('ruleDraft').innerHTML='';pendingDraft=null">Discard</button></div>
+    <div class="setrow" style="margin-top:10px"><button class="btn" id="ruleSaveBtn">Save</button><button class="btn ghost" id="ruleCancelBtn">Cancel</button></div>
   </div>`;
-  $("ruleSaveBtn").onclick = async () => { await post("/api/rules", pendingDraft); $("ruleDraft").innerHTML=""; pendingDraft=null; loadRules(); };
+  $("ruleCancelBtn").onclick = () => $("ruleModal").classList.remove("open");
+  $("ruleSaveBtn").onclick = async () => {
+    await post("/api/rules", pendingDraft);
+    // clear the composer for the next rule, stay in the modal
+    ruleMessages=[]; pendingDraft=null; $("ruleDraft").innerHTML=""; renderRuleThread();
+    loadRules();
+    $("ruleThread").innerHTML = '<div class="msg meta">Saved. Describe another, or close.</div>';
+  };
 }
 async function loadRules() {
-  const { rules } = await j("/api/rules");
-  $("rulesList").innerHTML = rules.length ? rules.map((r) => `
-    <div class="warning"><span class="toggle ${r.enabled?"on":""}" onclick="toggleRule('${r.id}',${r.enabled?0:1})"><span class="knob"></span></span>
+  const [{ rules }, ov] = await Promise.all([ j("/api/rules"), Promise.resolve(lastOverview) ]);
+  const allFiles = [...new Set((ov.systems||[]).flatMap((s)=>(s.databases||[]).map((d)=>d.file_name)))];
+  $("rulesList").innerHTML = rules.length ? rules.map((r) => {
+    const files = (r.match && r.match.files) || [];
+    const fsel = allFiles.length ? `<div class="fsel">${allFiles.map((f)=>`<label><input type="checkbox" ${files.length===0||files.includes(f)?"checked":""} onchange="ruleFiles('${r.id}')" data-file="${esc(f)}"> ${esc(f)}</label>`).join("")}</div>` : "";
+    return `<div class="warning" data-rule="${r.id}"><span class="toggle ${r.enabled?"on":""}" onclick="toggleRule('${r.id}',${r.enabled?0:1})"><span class="knob"></span></span>
       <div class="body"><div class="title">${esc(r.name)} <span class="badge b-${esc(r.severity)}">${esc(r.severity)}</span> ${r.class?`<span class="badge b-hipaa">${esc(r.class)}</span>`:""}</div>
         <div class="detail">${esc(r.description)}</div>
-        <div class="src">would have fired ${r.would_fire_30d ?? "—"}× in 30 days</div></div>
-      <button class="link danger" onclick="delRule('${r.id}')">delete</button></div>`).join("")
-    : '<div class="quiet">No rules yet. Describe one above and Clio will draft it.</div>';
+        <div class="src">would have fired ${r.would_fire_30d ?? "—"}× in 30 days${allFiles.length?" · applies to:":""}</div>
+        ${fsel}</div>
+      <button class="link danger" onclick="delRule('${r.id}')">delete</button></div>`; }).join("")
+    : '<div class="quiet">No rules yet. Click "New rule" to describe one.</div>';
+}
+async function ruleFiles(id) {
+  const boxes = [...document.querySelectorAll(`[data-rule="${id}"] .fsel input`)];
+  const checked = boxes.filter((b)=>b.checked).map((b)=>b.dataset.file);
+  const files = checked.length===boxes.length ? [] : checked; // all checked = no restriction
+  await j("/api/rules/"+id, { method:"PATCH", headers:{"content-type":"application/json"}, body:JSON.stringify({ match_patch:{ files } }) });
 }
 async function toggleRule(id, on) { await j("/api/rules/"+id, { method:"PATCH", headers:{"content-type":"application/json"}, body:JSON.stringify({enabled:!!on}) }); loadRules(); }
 async function delRule(id) { await j("/api/rules/"+id, { method:"DELETE" }); loadRules(); }
 
-// Admin (systems & keys)
+// Admin (systems & keys). "install password" in the UI; a Bearer token to the API.
 const adminTok = () => sessionStorage.getItem("clio_admin") || "";
 const adminH = () => ({ Authorization:"Bearer "+adminTok(), "content-type":"application/json" });
+// Make an admin call, prompting for the install password if we don't have it yet.
+async function adminReq(method, path, body) {
+  if (!adminTok()) {
+    const t = prompt("Install password (admin token) to make changes:");
+    if (!t) return null;
+    sessionStorage.setItem("clio_admin", t.trim());
+  }
+  const r = await fetch(api(path), { method, headers: adminH(), body: body!==undefined?JSON.stringify(body):undefined });
+  if (r.status === 401) { sessionStorage.removeItem("clio_admin"); alert("That password was not accepted."); return null; }
+  return r.json();
+}
 async function loadAdmin() {
   if (!adminTok()) return;
   const r = await fetch(api("/v1/admin/systems"), { headers: adminH() });
@@ -591,12 +755,13 @@ async function loadAdmin() {
 }
 $("adminUnlock").onclick = async () => { sessionStorage.setItem("clio_admin", $("adminToken").value.trim()); await loadAdmin(); if ($("adminPanel").style.display==="none") alert("Token not accepted."); };
 $("regMint").onclick = async () => {
-  const body = { system_id:$("regId").value.trim(), label:$("regLabel").value.trim()||null, fm_server:$("regServer").value.trim()||null, fm_file:$("regFile").value.trim()||null };
+  const body = { system_id:$("regId").value.trim(), label:$("regLabel").value.trim()||null, fm_server:$("regServer").value.trim()||null };
   if (!body.system_id) return alert("system id required");
   const r = await fetch(api("/v1/admin/keys"), { method:"POST", headers:adminH(), body:JSON.stringify(body) });
   const d = await r.json();
-  if (!d.ok) return alert(d.error?.message || "mint failed");
-  $("mintResult").innerHTML = `<div class="keybox">Copy it now, shown once:<br><b>${esc(d.data.key)}</b></div>`;
+  if (!d.ok) return alert(d.error?.message || "failed");
+  const url = location.origin + "/v1/log/" + d.data.key;
+  $("mintResult").innerHTML = `<div class="keybox">Connection code (shown once). Put this whole URL in the FileMaker script:<br><br><b>${esc(url)}</b></div>`;
   loadAdmin(); loadOverview();
 };
 

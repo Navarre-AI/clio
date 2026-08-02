@@ -14,7 +14,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { openDb, openDbReadOnly } from "./db.js";
 import { appendBatch, head, verifyRange } from "./chain.js";
 import { runScan, getPrefs } from "./scan.js";
-import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, currentModel, MODELS } from "./ai.js";
+import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, currentModel, MODELS, listModels } from "./ai.js";
 import { runRules, dryRun, createRule, listRules } from "./rules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -278,6 +278,23 @@ function diffRecords(prev, next) {
   return changed;
 }
 
+// Auto-discover database files from a transaction batch: upsert each file
+// under this system, bump its lifetime count, flag new ones for the admin.
+// Counters make per-file totals instant (no scan).
+const upsertDbNew = db.prepare(
+  `INSERT INTO databases (system_id, file_name, entry_count) VALUES (?, ?, ?)
+   ON CONFLICT(system_id, file_name) DO UPDATE SET
+     last_seen = datetime('now'), entry_count = entry_count + excluded.entry_count`
+);
+function trackFiles(systemId, entries) {
+  const counts = new Map();
+  for (const e of entries) {
+    const f = e.payload_json?.file;
+    if (f) counts.set(f, (counts.get(f) || 0) + 1);
+  }
+  for (const [file, n] of counts) upsertDbNew.run(systemId, file, n);
+}
+
 function ingestTxn(req, res) {
   const systemId = req.system.systemId;
   const entries = normalizeTxn(req.body, systemId);
@@ -295,6 +312,7 @@ function ingestTxn(req, res) {
     latestInBatch.set(k, p.data);
   }
   const result = appendBatch(db, systemId, entries);
+  trackFiles(systemId, entries);
   res.json(ok(result));
 }
 
@@ -461,6 +479,10 @@ app.patch("/api/rules/:id", (req, res) => {
   }
   if (req.body.enabled !== undefined) { fields.push("enabled = ?"); params.push(req.body.enabled ? 1 : 0); }
   if (req.body.match !== undefined) { fields.push("match_json = ?"); params.push(JSON.stringify(req.body.match)); }
+  if (req.body.match_patch !== undefined) { // merge into existing match (e.g. just the files scope)
+    let cur = {}; try { cur = JSON.parse(db.prepare("SELECT match_json FROM rules WHERE id = ?").get(req.params.id)?.match_json || "{}"); } catch {}
+    fields.push("match_json = ?"); params.push(JSON.stringify({ ...cur, ...req.body.match_patch }));
+  }
   if (!fields.length) return res.json({ ok: true });
   params.push(req.params.id);
   const r = db.prepare(`UPDATE rules SET ${fields.join(", ")} WHERE id = ?`).run(...params);
@@ -501,15 +523,16 @@ app.post("/api/rules/author", async (req, res) => {
 
 // ---- AI settings ------------------------------------------------------------
 
-app.get("/api/ai", (_req, res) => {
-  res.json({ available: aiAvailable(), model: currentModel(), models: MODELS });
+app.get("/api/ai", async (_req, res) => {
+  const models = await listModels();
+  res.json({ available: aiAvailable(), model: currentModel(), models });
 });
 
-app.post("/api/ai", (req, res) => {
+app.post("/api/ai", async (req, res) => {
   const m = String(req.body?.model || "");
-  if (m && MODELS.some((x) => x.id === m)) {
-    setModel(m);
-    metaSet("model", m);
+  const models = await listModels();
+  if (m && (models.some((x) => x.id === m) || MODELS.some((x) => x.id === m))) {
+    setModel(m); metaSet("model", m);
     return res.json({ ok: true, model: m });
   }
   res.status(400).json({ error: "unknown model" });
@@ -568,6 +591,93 @@ app.get("/v1/admin/systems", adminAuth, (_req, res) => {
   }));
 });
 
+// Edit a system's display fields.
+app.patch("/v1/admin/systems/:id", adminAuth, (req, res) => {
+  const fields = []; const params = [];
+  for (const k of ["label", "fm_server", "notes"]) {
+    if (req.body[k] !== undefined) { fields.push(`${k} = ?`); params.push(req.body[k] === null ? null : String(req.body[k])); }
+  }
+  if (!fields.length) return res.json(ok({ unchanged: true }));
+  // ensure the row exists (a system may exist only as a chain until now)
+  upsertSystem(req.params.id, {});
+  params.push(req.params.id);
+  db.prepare(`UPDATE systems SET ${fields.join(", ")} WHERE system_id = ?`).run(...params);
+  res.json(ok(db.prepare("SELECT * FROM systems WHERE system_id = ?").get(req.params.id)));
+});
+
+// Databases (files) under systems. Auto-discovered on ingest; named here.
+function databasesFor(systemId) {
+  return db.prepare("SELECT * FROM databases WHERE system_id = ? ORDER BY last_seen DESC").all(systemId);
+}
+app.get("/v1/admin/databases", adminAuth, (req, res) => {
+  const sid = req.query.system_id ? String(req.query.system_id) : null;
+  const rows = sid ? databasesFor(sid) : db.prepare("SELECT * FROM databases ORDER BY system_id, last_seen DESC").all();
+  res.json(ok({ databases: rows, unacknowledged: db.prepare("SELECT COUNT(*) AS n FROM databases WHERE acknowledged = 0").get().n }));
+});
+app.patch("/v1/admin/databases/:system/:file", adminAuth, (req, res) => {
+  const file = decodeURIComponent(req.params.file);
+  const sets = []; const params = [];
+  if (req.body.friendly_name !== undefined) { sets.push("friendly_name = ?"); params.push(req.body.friendly_name ? String(req.body.friendly_name) : null); }
+  if (req.body.acknowledged !== undefined) { sets.push("acknowledged = ?"); params.push(req.body.acknowledged ? 1 : 0); }
+  if (!sets.length) return res.json(ok({ unchanged: true }));
+  params.push(req.params.system, file);
+  const r = db.prepare(`UPDATE databases SET ${sets.join(", ")} WHERE system_id = ? AND file_name = ?`).run(...params);
+  if (!r.changes) return fail(res, 404, "not_found", "No such database.");
+  res.json(ok({ updated: true }));
+});
+
+// Archive: summarize + snapshot a system's whole log, append a tombstone entry
+// describing exactly what was archived. Non-destructive; the log still verifies.
+app.post("/v1/admin/systems/:id/archive", adminAuth, (req, res) => {
+  const sid = req.params.id;
+  const rows = db.prepare(
+    "SELECT * FROM log_entries WHERE system_id = ? ORDER BY seq"
+  ).all(sid);
+  if (!rows.length) return fail(res, 400, "empty", "Nothing to archive.");
+  const h = head(db, sid);
+  // detailed summary by action, file, actor
+  const byAction = {}, byFile = {}, byActor = {};
+  for (const r of rows) {
+    byAction[r.action] = (byAction[r.action] || 0) + 1;
+    let p = {}; try { p = JSON.parse(r.payload_json); } catch {}
+    if (p.file) byFile[p.file] = (byFile[p.file] || 0) + 1;
+    const who = p.account_name || p.data?.z_Modifier; if (who) byActor[who] = (byActor[who] || 0) + 1;
+  }
+  const summary = {
+    system_id: sid, entries: rows.length,
+    span: { from: rows[0].ts_server, to: rows[rows.length - 1].ts_server },
+    archived_head: { seq: h.seq, entry_hash: h.entry_hash },
+    by_action: byAction, by_file: byFile, by_actor: byActor,
+  };
+  // tombstone on the chain (append-only, so the archival act is itself logged)
+  appendBatch(db, sid, [{
+    event_id: randomUUID(), ts_client: new Date().toISOString(),
+    category: `${sid}.archive`, action: `${sid}.archive.created`,
+    payload_json: { message: `Archived ${rows.length} entries (${summary.span.from.slice(0,10)} to ${summary.span.to.slice(0,10)})`, ...summary },
+  }]);
+  selfLog("admin.archive_created", { system_id: sid, entries: rows.length });
+  res.json(ok({ summary, archive: { system_id: sid, head: summary.archived_head, entries: rows } }));
+});
+
+// Purge: the deliberate second pass. Delete the pre-tombstone rows and
+// re-genesis from the archive tombstone forward. Admin-gated; irreversible.
+app.post("/v1/admin/systems/:id/purge", adminAuth, (req, res) => {
+  const sid = req.params.id;
+  if (req.body?.confirm !== sid) return fail(res, 400, "confirm_required", `Send { "confirm": "${sid}" } to purge.`);
+  const before = db.prepare("SELECT COUNT(*) AS n FROM log_entries WHERE system_id = ?").get(sid).n;
+  db.exec("BEGIN");
+  try {
+    db.exec("DROP TRIGGER IF EXISTS log_no_delete");
+    db.prepare("DELETE FROM log_entries WHERE system_id = ?").run(sid);
+    db.exec("CREATE TRIGGER log_no_delete BEFORE DELETE ON log_entries BEGIN SELECT RAISE(ABORT, 'log_entries is append-only'); END");
+    db.prepare("DELETE FROM databases WHERE system_id = ?").run(sid);
+    db.prepare("UPDATE databases SET entry_count = 0 WHERE system_id = ?").run(sid);
+    db.exec("COMMIT");
+  } catch (e) { db.exec("ROLLBACK"); return fail(res, 500, "purge_failed", String(e.message || e)); }
+  selfLog("admin.purge", { system_id: sid, removed: before });
+  res.json(ok({ purged: before, system_id: sid }));
+});
+
 // ---- admin keys (chassis-verbatim semantics) --------------------------------
 
 app.post("/v1/admin/keys", adminAuth, (req, res) => {
@@ -609,16 +719,22 @@ app.get("/api/overview", (_req, res) => {
     db.prepare("SELECT system_id, COUNT(*) AS n FROM warnings WHERE status = 'open' GROUP BY system_id")
       .all().map((r) => [r.system_id, r.n])
   );
+  const dbsBySystem = {};
+  for (const d of db.prepare("SELECT * FROM databases").all()) (dbsBySystem[d.system_id] ||= []).push(d);
   const systems = ids.map((sid) => ({
     ...head(db, sid),
     open_warnings: openCounts[sid] || 0,
     label: reg[sid]?.label || null,
     fm_server: reg[sid]?.fm_server || null,
     fm_file: reg[sid]?.fm_file || null,
+    databases: (dbsBySystem[sid] || []).map((d) => ({
+      file_name: d.file_name, name: d.friendly_name || d.file_name,
+      entry_count: d.entry_count, acknowledged: !!d.acknowledged, last_seen: d.last_seen,
+    })),
   }));
-  // Group by server in the UI: sort by server, then system id.
   systems.sort((a, b) => (a.fm_server || "~").localeCompare(b.fm_server || "~") || a.system_id.localeCompare(b.system_id));
-  res.json({ systems, ai: aiAvailable(), version: VERSION });
+  const newDatabases = db.prepare("SELECT COUNT(*) AS n FROM databases WHERE acknowledged = 0").get().n;
+  res.json({ systems, ai: aiAvailable(), version: VERSION, new_databases: newDatabases });
 });
 
 // With system_id: that chain, seq-cursor paging. Without: the live feed,

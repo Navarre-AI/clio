@@ -12,14 +12,53 @@ export function setModel(m) { MODEL_OVERRIDE = m || ""; }
 const MODEL = () => MODEL_OVERRIDE || process.env.ANTHROPIC_MODEL || "claude-fable-5";
 export function currentModel() { return MODEL(); }
 
-// The models Clio offers. Verified against Matt's environment (Claude 5 family
-// + Opus 4.8 + Haiku 4.5); there is no "Opus 5" yet, 4.8 is the top Opus.
+// Offline fallback only. The live list comes from the Anthropic API (see
+// listModels) so a hardcode never goes stale — a stale hardcode is how
+// "Opus 5 no longer offered" happens. Default stays Fable 5.
 export const MODELS = [
-  { id: "claude-opus-4-8", label: "Opus 4.8", note: "most capable; best for tricky rules and analysis" },
   { id: "claude-fable-5", label: "Fable 5", note: "fast and sharp; Clio's default" },
+  { id: "claude-opus-4-8", label: "Opus 4.8", note: "most capable" },
   { id: "claude-sonnet-5", label: "Sonnet 5", note: "balanced" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", note: "cheapest; fine for the pulse" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", note: "cheapest" },
 ];
+
+// Pretty a raw model id ("claude-opus-4-8" -> "Opus 4.8"). Marks legacy
+// families so aging (pricier) models are visible as such.
+function prettyModel(id) {
+  const m = id.replace(/^claude-/, "").replace(/-\d{8}$/, "");
+  const fam = m.match(/(opus|sonnet|haiku|fable|mythos)/i)?.[1] || m;
+  const ver = m.replace(fam + "-", "").replace(fam, "").replace(/-/g, ".").replace(/^\.|\.$/g, "");
+  const label = fam.charAt(0).toUpperCase() + fam.slice(1) + (ver ? " " + ver : "");
+  return label;
+}
+
+// Live model list from Anthropic, cached ~6h. Legacy = an older-than-newest
+// member of its family. Returns [{id,label,legacy}], newest first.
+let _modelCache = null, _modelAt = 0;
+export async function listModels() {
+  if (!API_KEY()) return MODELS.map((m) => ({ ...m, legacy: false }));
+  if (_modelCache && Date.now() - _modelAt < 6 * 3600e3) return _modelCache;
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/models?limit=100", {
+      headers: { "x-api-key": API_KEY(), "anthropic-version": "2023-06-01" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) throw new Error("models " + r.status);
+    const data = (await r.json()).data || [];
+    const chat = data.filter((m) => /^claude-/.test(m.id) && !/deprecated/i.test(m.id));
+    // newest per family is current; older members legacy
+    const seenFam = new Set();
+    const list = chat.map((m) => {
+      const fam = m.id.match(/(opus|sonnet|haiku|fable|mythos)/i)?.[1]?.toLowerCase() || m.id;
+      const legacy = seenFam.has(fam); seenFam.add(fam);
+      return { id: m.id, label: m.display_name || prettyModel(m.id), legacy };
+    });
+    _modelCache = list; _modelAt = Date.now();
+    return list;
+  } catch {
+    return MODELS.map((m) => ({ ...m, legacy: false }));
+  }
+}
 
 export function aiAvailable() { return Boolean(API_KEY()); }
 
@@ -44,8 +83,21 @@ async function anthropicFetch(body, timeoutMs = 60000) {
 
 const ASK_TOOLS = [
   { name: "query_logs",
-    description: "Run one read-only SQLite SELECT against the log store. Tables: v_logs(system_id, seq, ts_client, ts_server, category, action, payload_json) and v_warnings(system_id, severity, title, detail, status, created_at). payload_json is a JSON string; use json_extract(payload_json, '$.field') to reach into it. Timestamps are ISO 8601 strings; they compare correctly as text. Returns rows as JSON.",
+    description: "Run one read-only SQLite SELECT (aggregate only: GROUP BY / COUNT / SUM, never raw record rows). Tables: v_logs(system_id, seq, ts_client, ts_server, category, action, payload_json) and v_warnings(system_id, severity, title, detail, status, created_at). payload_json is a JSON string; use json_extract(payload_json, '$.field') to reach a value (e.g. account_name, message, rows). Timestamps are ISO 8601 strings; compare as text, group a day with substr(ts_client,1,10). Returns { queryIndex, columns, rows } — reference queryIndex in present.",
     input_schema: { type: "object", properties: { sql: { type: "string" } }, required: ["sql"] } },
+  { name: "present",
+    description: "Lay out a small visual dashboard from query results. The server fills every number from the referenced query rows, so you never type a value. Compose 2-4 kpi tiles first (headline counts), then 1-3 bar charts of the interesting breakdowns.",
+    input_schema: { type: "object", properties: {
+      title: { type: "string", description: "Short dashboard title, e.g. 'Today at a glance'" },
+      blocks: { type: "array", items: { type: "object", properties: {
+        type: { type: "string", enum: ["kpi", "bar", "table"] },
+        queryIndex: { type: "number", description: "The queryIndex returned by query_logs whose rows this block uses" },
+        title: { type: "string", description: "Block heading (bar/table)" },
+        label: { type: "string", description: "kpi: the tile label" },
+        labelColumn: { type: "string", description: "bar: column holding each bar's label" },
+        valueColumn: { type: "string", description: "kpi/bar: column holding the number" },
+      }, required: ["type", "queryIndex"] } },
+    }, required: ["blocks"] } },
 ];
 
 export function guardSql(sql) {
@@ -62,24 +114,70 @@ function vocabulary(db) {
   return actions.map((a) => `${a.system_id} ${a.action} (${a.n})`).join("\n");
 }
 
+// Build display artifacts from stored query rows. The model chose columns and
+// titles; every number here comes straight from the rows, never from the model.
+function buildArtifacts(spec, queryLog) {
+  const out = [];
+  for (const b of spec.blocks || []) {
+    const q = queryLog[Number(b.queryIndex)];
+    if (!q || !q.rows.length) continue;
+    const cols = q.columns;
+    const numCol = b.valueColumn && cols.includes(b.valueColumn) ? b.valueColumn
+      : cols.find((c) => q.rows.every((r) => typeof r[c] === "number")) || cols[cols.length - 1];
+    if (b.type === "kpi") {
+      // one tile per row (label column optional), or a single tile from row 0
+      const labelCol = b.labelColumn && cols.includes(b.labelColumn) ? b.labelColumn : null;
+      const cells = q.rows.slice(0, 6).map((r) => ({
+        label: b.label || (labelCol ? String(r[labelCol]) : cols[0]),
+        value: Number(r[numCol]),
+      }));
+      out.push({ type: "kpi", cells });
+    } else if (b.type === "bar") {
+      const labelCol = b.labelColumn && cols.includes(b.labelColumn) ? b.labelColumn : cols[0];
+      let series = q.rows.map((r) => ({ label: String(r[labelCol]), value: Number(r[numCol]) }))
+        .filter((s) => Number.isFinite(s.value)).sort((a, z) => z.value - a.value);
+      if (series.length > 8) { // fold the tail into Other, so 2M rows still read cleanly
+        const head = series.slice(0, 7);
+        const other = series.slice(7).reduce((s, x) => s + x.value, 0);
+        series = [...head, { label: "Other", value: other }];
+      }
+      out.push({ type: "bar", title: b.title || "", series });
+    } else if (b.type === "table") {
+      out.push({ type: "table", title: b.title || "", columns: cols, rows: q.rows.slice(0, 12) });
+    }
+  }
+  return out;
+}
+
 export async function askLogs(dbRead, messages) {
   const system =
     "You are Clio, the historian over this installation's tamper-evident FileMaker logs. " +
-    "Answer in plain, concise business English backed by real numbers.\n\n" +
+    "Answer like a sharp analyst laying out a one-screen briefing.\n\n" +
     "The event vocabulary actually present (system action count):\n" + vocabulary(dbRead) + "\n\n" +
-    "Rules: (1) For any number or fact, call query_logs with a SQLite SELECT; never state a number you did not query. " +
-    "(2) Give a short plain-English answer with a takeaway; mention a table was shown if you queried one. " +
-    "(3) Never show SQL, view names, or column names to the user. Never invent events that are not in the vocabulary. " +
-    "(4) If the logs cannot answer the question, say so honestly. " +
-    "(5) Style: never use em dashes; use commas, colons, or parentheses instead.";
+    "How to work:\n" +
+    "1. Query with query_logs. ALWAYS aggregate (GROUP BY / COUNT / SUM). NEVER select raw record rows. " +
+    "At any scale, from 20 events to two million, the answer is counts, breakdowns, and top-N, never a record dump.\n" +
+    "2. Then call present to lay out a small dashboard: 2 to 4 kpi tiles for the headline numbers (total events, " +
+    "people active, edits, deletes, whatever fits the question), then 1 to 3 bar charts of the most telling " +
+    "breakdowns (by person, by action type, by field changed, by hour or day). Reference each query by its queryIndex; " +
+    "the server fills the numbers, so you never type a value.\n" +
+    "3. Write a short takeaway that makes a judgement: name what is notable (off-hours activity, a spike in deletes, " +
+    "a new or temporary account, a person doing far more than usual) or say plainly that it was a quiet, normal day.\n\n" +
+    "Rules: never state a number you did not query. Never show SQL, column names, or raw payload JSON to the user. " +
+    "Use the human 'message' field or friendly labels, never internal ids. " +
+    "If nothing matches, say so in one line (for example 'No invoice activity in the log') plus the likely reason if there is one " +
+    "(the current data is imported history, so some event types simply are not captured yet). Do NOT recite everything the log " +
+    "does contain as a consolation. Be honest if the logs cannot answer. " +
+    "Never use em dashes; use commas, colons, or parentheses.";
 
   const convo = messages.map((m) => ({ role: m.role, content: String(m.content) }));
-  const artifacts = [];
+  const queryLog = []; // {columns, rows} per query_logs call this turn; present references these
+  let artifacts = [];
   let replyText = "";
 
-  for (let hop = 0; hop < 6; hop++) {
+  for (let hop = 0; hop < 7; hop++) {
     const resp = await anthropicFetch({
-      model: MODEL(), max_tokens: 1500, system, tools: ASK_TOOLS, messages: convo,
+      model: MODEL(), max_tokens: 1600, system, tools: ASK_TOOLS, messages: convo,
     });
     convo.push({ role: "assistant", content: resp.content });
     const toolUses = resp.content.filter((b) => b.type === "tool_use");
@@ -89,10 +187,16 @@ export async function askLogs(dbRead, messages) {
     for (const tu of toolUses) {
       let out;
       try {
-        const rows = dbRead.prepare(guardSql(tu.input.sql)).all().slice(0, 200);
-        const columns = rows[0] ? Object.keys(rows[0]) : [];
-        if (rows.length) artifacts.push({ title: "Result", columns, rows });
-        out = { rowCount: rows.length, columns, rows: rows.slice(0, 60) };
+        if (tu.name === "query_logs") {
+          const rows = dbRead.prepare(guardSql(tu.input.sql)).all().slice(0, 500);
+          const columns = rows[0] ? Object.keys(rows[0]) : [];
+          queryLog.push({ columns, rows });
+          out = { queryIndex: queryLog.length - 1, rowCount: rows.length, columns, rows: rows.slice(0, 40) };
+        } else if (tu.name === "present") {
+          const built = buildArtifacts(tu.input, queryLog);
+          artifacts = built; // the latest present wins; the model composes one dashboard
+          out = { rendered: built.length, blocks: built.map((b) => b.type) };
+        } else out = { error: "unknown tool" };
       } catch (e) {
         out = { error: String(e.message || e).slice(0, 300) };
       }
@@ -129,6 +233,7 @@ const RULE_TOOL = [{
           action_like: { type: "string", description: "SQL LIKE against the action name, e.g. '%login%' or '%.deleted'" },
           category_like: { type: "string" },
           actor: { type: "string", description: "A specific account name, or omit" },
+          files: { type: "array", items: { type: "string" }, description: "Limit to specific database file names, or omit for all files" },
           rows_gte: { type: "number", description: "For big exports: payload.rows at or above this" },
           off_hours: { type: "boolean", description: "Only outside business hours" },
           weekend: { type: "boolean", description: "Only on weekends" },
