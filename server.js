@@ -74,6 +74,19 @@ function selfLog(event, fields = {}) {
   };
   console.log(JSON.stringify({ level: "audit", action: entry.action, ...fields }));
   appendBatch(db, "clio", [entry]);
+  emit(); // clio's own activity is live too
+}
+
+// ---- live push (SSE) + visible rejects --------------------------------------
+// One in-process fan-out. Every append pings open EventSource clients so the
+// UI updates with zero polling. Clients then pull new rows since their cursor.
+const sseClients = new Set();
+function emit() { for (const res of sseClients) { try { res.write("event: log\ndata: 1\n\n"); } catch {} } }
+
+// A rejected/failed post is recorded so a silent drop is never invisible.
+const insReject = db.prepare("INSERT INTO rejects (id, system_id, code, message, snippet) VALUES (?, ?, ?, ?, ?)");
+function recordReject(systemId, code, message, snippet) {
+  try { insReject.run(randomUUID(), systemId || null, code, String(message).slice(0, 200), String(snippet || "").slice(0, 300)); } catch {}
 }
 
 // ---- auth middlewares -------------------------------------------------------
@@ -206,12 +219,15 @@ function ingest(req, res) {
   if (looksLikeTxn(req.body)) return ingestTxn(req, res);
   const entries = normalizeBody(req.body);
   if (!Array.isArray(entries) || entries.length === 0) {
+    recordReject(systemId, "bad_request", "unrecognized body shape", JSON.stringify(req.body).slice(0, 300));
     return fail(res, 400, "bad_request", "Body must be a transaction dump, { entries: [...] }, or one flat { category, action, payload } event.");
   }
   if (entries.length > MAX_BATCH) {
+    recordReject(systemId, "batch_too_large", `${entries.length} entries`, "");
     return fail(res, 413, "batch_too_large", `At most ${MAX_BATCH} entries per batch.`);
   }
   const result = appendBatch(db, systemId, entries);
+  emit();
   res.json(ok(echoData(systemId, entries, result, entries.length > 1 ? "batch" : "event")));
 }
 
@@ -281,8 +297,11 @@ function diffRecords(prev, next) {
 // Auto-discover database files from a transaction batch: upsert each file
 // under this system, bump its lifetime count, flag new ones for the admin.
 // Counters make per-file totals instant (no scan).
+// A newly-seen file arrives placed=0 (unplaced): its entries are stored, but
+// it waits in the wizard until the admin names it and either makes it its own
+// system or links it to an existing one. No silent auto-attach.
 const upsertDbNew = db.prepare(
-  `INSERT INTO databases (system_id, file_name, entry_count) VALUES (?, ?, ?)
+  `INSERT INTO databases (system_id, file_name, entry_count, placed) VALUES (?, ?, ?, 0)
    ON CONFLICT(system_id, file_name) DO UPDATE SET
      last_seen = datetime('now'), entry_count = entry_count + excluded.entry_count`
 );
@@ -326,6 +345,7 @@ function ingestTxn(req, res) {
   const systemId = req.system.systemId;
   let entries = normalizeTxn(req.body, systemId);
   if (entries === null) {
+    recordReject(systemId, "bad_request", "not an OnWindowTransaction body", JSON.stringify(req.body).slice(0, 300));
     return fail(res, 400, "bad_request", "Body must be the OnWindowTransaction JSON, posted as-is.");
   }
   if (entries.length === 0) return res.json(ok({ accepted: 0, duplicates: 0, head: head(db, systemId) })); // Find-mode empty firing
@@ -348,6 +368,7 @@ function ingestTxn(req, res) {
   }
   const result = appendBatch(db, systemId, entries);
   trackFiles(systemId, entries);
+  emit();
   res.json(ok(echoData(systemId, entries, result, collapsed ? "bulk" : "transaction", collapsed)));
 }
 
@@ -586,13 +607,13 @@ app.post("/api/rules/author", async (req, res) => {
 // ---- AI settings ------------------------------------------------------------
 
 app.get("/api/ai", async (_req, res) => {
-  const models = await listModels();
-  res.json({ available: aiAvailable(), model: currentModel(), models });
+  const { models, fallback } = await listModels();
+  res.json({ available: aiAvailable(), model: currentModel(), models, fallback });
 });
 
 app.post("/api/ai", async (req, res) => {
   const m = String(req.body?.model || "");
-  const models = await listModels();
+  const { models } = await listModels();
   if (m && (models.some((x) => x.id === m) || MODELS.some((x) => x.id === m))) {
     setModel(m); metaSet("model", m);
     return res.json({ ok: true, model: m });
@@ -773,30 +794,101 @@ app.delete("/v1/admin/keys/:id", adminAuth, (req, res) => {
 
 // ---- UI surface (behind the gate) ------------------------------------------
 
-app.get("/api/overview", (_req, res) => {
+app.get("/api/overview", (req, res) => {
+  const showHidden = req.query.all === "1";
   const reg = systemsIndex();
   const chains = db.prepare("SELECT DISTINCT system_id FROM log_entries").all().map((r) => r.system_id);
   const ids = [...new Set([...Object.keys(reg), ...chains])];
   const openCounts = Object.fromEntries(
     db.prepare("SELECT system_id, COUNT(*) AS n FROM warnings WHERE status = 'open' GROUP BY system_id")
-      .all().map((r) => [r.system_id, r.n])
-  );
+      .all().map((r) => [r.system_id, r.n]));
+  const dayAgo = new Date(Date.now() - 86400000).toISOString();
+  const todayCounts = Object.fromEntries(
+    db.prepare("SELECT system_id, COUNT(*) AS n FROM log_entries WHERE ts_server >= ? GROUP BY system_id").all(dayAgo)
+      .map((r) => [r.system_id, r.n]));
   const dbsBySystem = {};
   for (const d of db.prepare("SELECT * FROM databases").all()) (dbsBySystem[d.system_id] ||= []).push(d);
-  const systems = ids.map((sid) => ({
-    ...head(db, sid),
-    open_warnings: openCounts[sid] || 0,
-    label: reg[sid]?.label || null,
-    fm_server: reg[sid]?.fm_server || null,
-    fm_file: reg[sid]?.fm_file || null,
-    databases: (dbsBySystem[sid] || []).map((d) => ({
-      file_name: d.file_name, name: d.friendly_name || d.file_name,
-      entry_count: d.entry_count, acknowledged: !!d.acknowledged, last_seen: d.last_seen,
-    })),
-  }));
-  systems.sort((a, b) => (a.fm_server || "~").localeCompare(b.fm_server || "~") || a.system_id.localeCompare(b.system_id));
-  const newDatabases = db.prepare("SELECT COUNT(*) AS n FROM databases WHERE acknowledged = 0").get().n;
-  res.json({ systems, ai: aiAvailable(), version: VERSION, new_databases: newDatabases });
+  const systems = ids
+    .filter((sid) => showHidden || (reg[sid]?.display ?? 1))
+    .map((sid) => ({
+      ...head(db, sid),
+      display: reg[sid]?.display ?? 1,
+      today: todayCounts[sid] || 0,
+      open_warnings: openCounts[sid] || 0,
+      label: reg[sid]?.label || null,
+      fm_server: reg[sid]?.fm_server || null,
+      tz_offset: reg[sid]?.tz_offset ?? null,
+      databases: (dbsBySystem[sid] || []).map((d) => ({
+        file_name: d.file_name, name: d.friendly_name || d.file_name,
+        entry_count: d.entry_count, placed: !!d.placed, last_seen: d.last_seen,
+      })),
+    }));
+  systems.sort((a, b) => (a.label || a.system_id).localeCompare(b.label || b.system_id));
+  // Unplaced files (any system) drive the new-database wizard.
+  const unplaced = db.prepare("SELECT system_id, file_name, entry_count, last_seen FROM databases WHERE placed = 0 ORDER BY last_seen DESC").all();
+  res.json({ systems, ai: aiAvailable(), version: VERSION, unplaced, tagline: "FileMaker logging for the AI Age." });
+});
+
+// Live push: the browser opens this once; every append writes an event and the
+// client pulls new rows. No polling, stays fresh across sleep (browser auto-
+// reconnects EventSource on its own).
+app.get("/api/stream", (req, res) => {
+  res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+  res.write("event: hello\ndata: 1\n\n");
+  sseClients.add(res);
+  const ping = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 25000);
+  req.on("close", () => { clearInterval(ping); sseClients.delete(res); });
+});
+
+app.get("/api/rejects", (_req, res) => {
+  res.json({ rejects: db.prepare("SELECT * FROM rejects ORDER BY ts DESC LIMIT 50").all() });
+});
+
+// New-database wizard. Placed files show under their system; unplaced wait here.
+// Placing "own" makes a file its own system (mints a key, hands back the URL);
+// "link" attaches it to an existing system for display. Unlink returns it to
+// the unplaced state. (Entries stay under the key they arrived on; this governs
+// naming and grouping, reversibly.)
+app.post("/api/databases/place", (req, res) => {
+  const { system_id, file_name, mode, name, target } = req.body || {};
+  if (!system_id || !file_name) return res.status(400).json({ error: "system_id and file_name required" });
+  if (mode === "link") {
+    db.prepare("UPDATE databases SET placed = 1, system_display = ?, friendly_name = COALESCE(?, friendly_name) WHERE system_id = ? AND file_name = ?")
+      .run(String(target || system_id), name || null, system_id, file_name);
+    return res.json({ ok: true });
+  }
+  // own: create/keep a system named after the file, hand back a fresh key + URL
+  const newSid = String(name || file_name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || file_name;
+  upsertSystem(newSid, { label: name || file_name });
+  db.prepare("UPDATE databases SET placed = 1, system_display = ?, friendly_name = COALESCE(?, friendly_name) WHERE system_id = ? AND file_name = ?")
+    .run(newSid, name || file_name, system_id, file_name);
+  const key = generateApiKey(); const id = randomUUID();
+  db.prepare("INSERT INTO api_keys (id, system_id, label, key_hash) VALUES (?, ?, ?, ?)").run(id, newSid, name || file_name, sha256Hex(key));
+  selfLog("admin.system_created", { system_id: newSid, from_file: file_name });
+  res.json({ ok: true, system_id: newSid, url: `${req.protocol}://${req.get("host")}/v1/log/${key}` });
+});
+app.post("/api/databases/unlink", (req, res) => {
+  const { system_id, file_name } = req.body || {};
+  db.prepare("UPDATE databases SET placed = 0, system_display = NULL WHERE system_id = ? AND file_name = ?").run(system_id, file_name);
+  res.json({ ok: true });
+});
+
+// Per-system saves (rename, show/hide, timezone) are ordinary, not destructive,
+// so they sit behind the site-password gate, no admin token prompt.
+app.post("/api/systems/:id", (req, res) => {
+  upsertSystem(req.params.id, {});
+  const sets = []; const params = [];
+  if (req.body.label !== undefined) { sets.push("label = ?"); params.push(req.body.label || null); }
+  if (req.body.fm_server !== undefined) { sets.push("fm_server = ?"); params.push(req.body.fm_server || null); }
+  if (req.body.display !== undefined) { sets.push("display = ?"); params.push(req.body.display ? 1 : 0); }
+  if (req.body.tz_offset !== undefined) { sets.push("tz_offset = ?"); params.push(req.body.tz_offset === null ? null : Number(req.body.tz_offset)); }
+  if (sets.length) { params.push(req.params.id); db.prepare(`UPDATE systems SET ${sets.join(", ")} WHERE system_id = ?`).run(...params); }
+  res.json({ ok: true });
+});
+app.post("/api/databases/rename", (req, res) => {
+  const { system_id, file_name, name } = req.body || {};
+  db.prepare("UPDATE databases SET friendly_name = ? WHERE system_id = ? AND file_name = ?").run(name || null, system_id, file_name);
+  res.json({ ok: true });
 });
 
 // With system_id: that chain, seq-cursor paging. Without: the live feed,
@@ -830,8 +922,13 @@ app.get("/api/history", (req, res) => {
   if (q.table) { where.push("json_extract(payload_json,'$.table') = ?"); params.push(String(q.table)); }
   if (q.record_id) { where.push("json_extract(payload_json,'$.record_id') = ?"); params.push(Number(q.record_id)); }
   if (q.actor) { where.push("(json_extract(payload_json,'$.account_name') = ? OR json_extract(payload_json,'$.data.z_Modifier') = ?)"); params.push(String(q.actor), String(q.actor)); }
-  if (q.since) { where.push("ts_server >= ?"); params.push(String(q.since)); }
-  if (q.until) { where.push("ts_server < ?"); params.push(String(q.until)); }
+  if (q.action_type) { // friendly CRUD filter -> action patterns
+    const map = { create: "%.new", update: "%.modified", delete: "%.deleted", read: "%view%", login: "%login%", export: "%export%" };
+    const pat = map[String(q.action_type)];
+    if (pat) { where.push("(action LIKE ? OR action LIKE ?)"); params.push(pat, pat.replace("%.", "%.created")); }
+  }
+  if (q.since) { where.push("ts_client >= ?"); params.push(String(q.since)); }
+  if (q.until) { where.push("ts_client < ?"); params.push(String(q.until)); }
   if (q.q) { where.push("payload_json LIKE ?"); params.push(`%${q.q}%`); }
   const recordMode = Boolean(q.record_id && q.table);
   const field = q.field ? String(q.field) : null;
@@ -1028,6 +1125,8 @@ app.use((e, req, res, _next) => {
 
 // Restore the saved AI model choice (Settings > AI persists it to meta).
 try { const m = metaGet("model"); if (m) setModel(m); } catch {}
+// Warm the model list (non-blocking) so Settings opens instantly.
+setTimeout(() => { listModels().catch(() => {}); }, 3000);
 
 app.listen(PORT, () => {
   console.log(JSON.stringify({ level: "info", msg: `Clio listening on :${PORT}`, db: DB_PATH, ai: aiAvailable(), model: currentModel() }));

@@ -9,17 +9,19 @@ const API_KEY = () => process.env.ANTHROPIC_API_KEY || "";
 // Model is settable at runtime (Settings > AI). Falls back to env then default.
 let MODEL_OVERRIDE = "";
 export function setModel(m) { MODEL_OVERRIDE = m || ""; }
-const MODEL = () => MODEL_OVERRIDE || process.env.ANTHROPIC_MODEL || "claude-fable-5";
+const MODEL = () => MODEL_OVERRIDE || process.env.ANTHROPIC_MODEL || "claude-opus-5";
 export function currentModel() { return MODEL(); }
 
-// Offline fallback only. The live list comes from the Anthropic API (see
-// listModels) so a hardcode never goes stale — a stale hardcode is how
-// "Opus 5 no longer offered" happens. Default stays Fable 5.
+// Offline fallback only, flagged as such to the UI. The live list comes from
+// the Anthropic API (see listModels); a stale hardcode is how "Opus 5 no longer
+// offered" happens. created_at drives current-vs-previous curation. Default is
+// Opus 5.
 export const MODELS = [
-  { id: "claude-fable-5", label: "Fable 5", note: "fast and sharp; Clio's default" },
-  { id: "claude-opus-4-8", label: "Opus 4.8", note: "most capable" },
-  { id: "claude-sonnet-5", label: "Sonnet 5", note: "balanced" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", note: "cheapest" },
+  { id: "claude-opus-5", display_name: "Claude Opus 5", created_at: "2026-07-24T00:00:00Z" },
+  { id: "claude-fable-5", display_name: "Claude Fable 5", created_at: "2026-07-24T00:00:00Z" },
+  { id: "claude-sonnet-5", display_name: "Claude Sonnet 5", created_at: "2026-05-14T00:00:00Z" },
+  { id: "claude-opus-4-8", display_name: "Claude Opus 4.8", created_at: "2026-02-05T00:00:00Z" },
+  { id: "claude-haiku-4-5", display_name: "Claude Haiku 4.5", created_at: "2025-10-01T00:00:00Z" },
 ];
 
 // Pretty a raw model id ("claude-opus-4-8" -> "Opus 4.8"). Marks legacy
@@ -32,31 +34,60 @@ function prettyModel(id) {
   return label;
 }
 
-// Live model list from Anthropic, cached ~6h. Legacy = an older-than-newest
-// member of its family. Returns [{id,label,legacy}], newest first.
-let _modelCache = null, _modelAt = 0;
-export async function listModels() {
-  if (!API_KEY()) return MODELS.map((m) => ({ ...m, legacy: false }));
-  if (_modelCache && Date.now() - _modelAt < 6 * 3600e3) return _modelCache;
+// Curate a raw model list (from the API or the fallback) into what the UI
+// shows: each family's current + previous only (by created_at), newest first,
+// so the dropdown is a short useful list, not eleven ancient ids. Older-than-
+// previous members are dropped; "previous" is marked legacy.
+function curate(raw) {
+  const byFam = {};
+  for (const m of raw) {
+    if (!/^claude-/.test(m.id) || /deprecated/i.test(m.id)) continue;
+    const fam = m.id.match(/(opus|sonnet|haiku|fable|mythos)/i)?.[1]?.toLowerCase() || m.id;
+    (byFam[fam] ||= []).push(m);
+  }
+  const out = [];
+  for (const fam of Object.keys(byFam)) {
+    const sorted = byFam[fam].sort((a, z) => new Date(z.created_at || 0) - new Date(a.created_at || 0));
+    if (sorted[0]) out.push({ id: sorted[0].id, label: sorted[0].display_name || prettyModel(sorted[0].id), legacy: false, created_at: sorted[0].created_at });
+    if (sorted[1]) out.push({ id: sorted[1].id, label: sorted[1].display_name || prettyModel(sorted[1].id), legacy: true, created_at: sorted[1].created_at });
+  }
+  return out.sort((a, z) => new Date(z.created_at || 0) - new Date(a.created_at || 0));
+}
+
+// Live model list from Anthropic, volume-cached 24h + self-healing. If the
+// model we're using isn't in the list, the list is stale, not the model:
+// refetch. Fallback (flagged) only when no key/no network.
+import fs from "node:fs";
+const MODELS_PATH = () => (process.env.DATA_DIR || "./data") + "/models.json";
+let _modelCache = null;
+function loadModelCache() {
+  if (_modelCache) return _modelCache;
+  try { _modelCache = JSON.parse(fs.readFileSync(MODELS_PATH(), "utf8")); } catch {}
+  return _modelCache;
+}
+export async function listModels(force = false) {
+  const cached = loadModelCache();
+  const fresh = cached && Date.now() - new Date(cached.fetchedAt).getTime() < 86400000;
+  if (!force && fresh) {
+    if (!cached.models.some((m) => m.id === MODEL())) return listModels(true); // self-heal
+    return { models: cached.models, fallback: false };
+  }
+  if (!API_KEY()) return { models: curate(MODELS), fallback: true };
   try {
     const r = await fetch("https://api.anthropic.com/v1/models?limit=100", {
       headers: { "x-api-key": API_KEY(), "anthropic-version": "2023-06-01" },
       signal: AbortSignal.timeout(15000),
     });
     if (!r.ok) throw new Error("models " + r.status);
-    const data = (await r.json()).data || [];
-    const chat = data.filter((m) => /^claude-/.test(m.id) && !/deprecated/i.test(m.id));
-    // newest per family is current; older members legacy
-    const seenFam = new Set();
-    const list = chat.map((m) => {
-      const fam = m.id.match(/(opus|sonnet|haiku|fable|mythos)/i)?.[1]?.toLowerCase() || m.id;
-      const legacy = seenFam.has(fam); seenFam.add(fam);
-      return { id: m.id, label: m.display_name || prettyModel(m.id), legacy };
-    });
-    _modelCache = list; _modelAt = Date.now();
-    return list;
+    const models = curate((await r.json()).data || []);
+    if (models.length) {
+      _modelCache = { models, fetchedAt: new Date().toISOString() };
+      try { fs.writeFileSync(MODELS_PATH(), JSON.stringify(_modelCache)); } catch {}
+      return { models, fallback: false };
+    }
+    throw new Error("empty");
   } catch {
-    return MODELS.map((m) => ({ ...m, legacy: false }));
+    return { models: cached?.models || curate(MODELS), fallback: !cached };
   }
 }
 

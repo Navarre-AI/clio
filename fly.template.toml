@@ -15,10 +15,12 @@ primary_region = "{{REGION}}"
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = true
+  # A log system can't sleep: a cold-start wake-up drops fire-and-forget posts,
+  # and a second machine would fork the append-only chain. One machine, always on.
+  auto_stop_machines = false
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  memory = "1gb"

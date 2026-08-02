@@ -62,6 +62,12 @@ The raw log is the source of truth; history, before-values, and every slice
 SQL, no precomputation. This is the queryable-power payoff of storing raw.
 (Design note, mostly already true; formalize the filters in the UI/API.)
 
+## Usage log (audit the auditors)
+A meta-log that tracks usage of the Clio logs themselves: who viewed which
+record's history, who ran which Ask query, who read or exported what, when.
+Auditing access to the audit log. (Reads, not just writes.) Same tamper-evident
+chain, its own system.
+
 ## Other
 - Line / time-series charts in Ask (activity over time), and multi-series
   palettes, when a real need appears (0.x stays single-hue bars + tiles).

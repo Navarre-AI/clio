@@ -64,12 +64,15 @@ export function appendBatch(db, systemId, entries) {
       const eventId = str(raw.event_id) || randomUUID();
       if (seenInBatch.has(eventId) || exists.get(systemId, eventId)) { duplicates++; continue; }
       seenInBatch.add(eventId);
+      const nowIso = new Date().toISOString();
       const e = {
         seq: ++seq,
         system_id: systemId,
         event_id: eventId,
-        ts_client: str(raw.ts_client),
-        ts_server: new Date().toISOString(),
+        // Canonical event time: the client's stamp when present, else arrival.
+        // Never blank, so "today" queries can't miss entries that omit ts_client.
+        ts_client: str(raw.ts_client) || nowIso,
+        ts_server: nowIso,
         category: str(raw.category),
         action: str(raw.action),
         // Exactly one stringify if the client sent an object; strings pass through.
