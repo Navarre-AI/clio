@@ -112,12 +112,29 @@ function ensureUnfiled() {
 function ingestAuth(req, res, next) {
   const key = req.params?.key || bearer(req) || (req.query.key ? String(req.query.key) : "");
   const row = key ? db.prepare("SELECT id, system_id, label FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL").get(sha256Hex(key)) : null;
-  if (row) { req.system = { systemId: row.system_id, keyId: row.id, label: row.label }; return next(); }
+  if (row) {
+    // ONE key for all apps: a key whose system is "universal" routes each post
+    // to a system derived from the data (the FileMaker file name), so you paste
+    // the same URL into every file and they still separate cleanly.
+    req.system = { systemId: row.system_id, keyId: row.id, label: row.label, universal: row.system_id === "universal" };
+    return next();
+  }
   ensureUnfiled();
   req.system = { systemId: "unfiled", unfiledKey: key ? key.slice(0, 24) : "(none)" };
   recordReject(null, key ? "unknown_api_key" : "no_api_key",
     `logged to Unfiled (key ${key ? key.slice(0, 16) + "…" : "missing"})`, "");
   next();
+}
+// The system a post belongs to when using the universal key: the file name
+// from a transaction, or a "system"/"file"/"table" hint on a flat event.
+function routeSystem(body) {
+  if (looksLikeTxn(body)) {
+    for (const [file, tables] of Object.entries(body)) {
+      if (tables && typeof tables === "object" && !Array.isArray(tables) && Object.values(tables).some((r) => Array.isArray(r))) return slugify(file);
+    }
+  }
+  const hint = body?.system || body?.file || body?.table;
+  return hint ? slugify(hint) : "unfiled";
 }
 
 function adminAuth(req, res, next) {
@@ -240,6 +257,7 @@ function looksLikeTxn(b) {
 // a chassis batch { entries:[...] }, or one flat { category, action, payload }.
 // This is what lets a client run a single dead-simple script.
 function ingest(req, res) {
+  if (req.system.universal) { ensureUnfiled(); req.system.systemId = routeSystem(req.body); }
   const systemId = req.system.systemId;
   if (looksLikeTxn(req.body)) return ingestTxn(req, res);
   const entries = normalizeBody(req.body);
@@ -368,6 +386,7 @@ function collapseBulk(systemId, entries) {
 }
 
 function ingestTxn(req, res) {
+  if (req.system.universal) { ensureUnfiled(); req.system.systemId = routeSystem(req.body); }
   const systemId = req.system.systemId;
   let entries = normalizeTxn(req.body, systemId);
   if (entries === null) {
