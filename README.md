@@ -67,8 +67,15 @@ node setup.mjs
 ```
 
 Creates the app and volume, sets secrets, deploys, mints your first key, and
-prints the two values the FileMaker side needs. Scale-to-zero friendly: the
-machine sleeps until FileMaker's next request wakes it.
+prints the two values the FileMaker side needs. The shipped fly.toml keeps one
+machine always on so posts are never dropped to a cold start.
+
+**Back up the volume.** The single Fly volume is the one place your history
+lives; tamper-evidence proves history was not rewritten, it does not resurrect
+a lost disk. Enable Fly's volume snapshots (on by default, check retention with
+`fly volumes list` and `fly volumes snapshots list <vol-id>`) and treat the
+archive endpoint's JSON export as your offsite copy for anything you cannot
+afford to lose.
 
 ## API
 
