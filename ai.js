@@ -5,10 +5,17 @@
 
 import { warningsFromAggregates } from "./scan.js";
 
-const API_KEY = () => process.env.ANTHROPIC_API_KEY || "";
-// Model is settable at runtime (Settings > AI). Falls back to env then default.
-let MODEL_OVERRIDE = "";
+// All AI knobs are settable at runtime (Settings > AI) and persisted by the
+// server; env vars are the fallback. Pythia's pattern.
+let KEY_OVERRIDE = "", MODEL_OVERRIDE = "", THINKING = "", SPEED = "fast";
+const API_KEY = () => KEY_OVERRIDE || process.env.ANTHROPIC_API_KEY || "";
 export function setModel(m) { MODEL_OVERRIDE = m || ""; }
+export function setAIConfig({ api_key, thinking, speed } = {}) {
+  if (api_key !== undefined) KEY_OVERRIDE = api_key || "";
+  if (thinking !== undefined) THINKING = thinking || "";
+  if (speed !== undefined) SPEED = speed || "";
+}
+export function aiConfig() { return { thinking: THINKING, speed: SPEED, key_override: Boolean(KEY_OVERRIDE) }; }
 const MODEL = () => MODEL_OVERRIDE || process.env.ANTHROPIC_MODEL || "claude-opus-5";
 export function currentModel() { return MODEL(); }
 
@@ -93,17 +100,29 @@ export async function listModels(force = false) {
 
 export function aiAvailable() { return Boolean(API_KEY()); }
 
+// Fast mode exists only on Opus; thinking shapes differ by model generation.
+// If a model rejects the knobs, retry once with a plain body (Pythia's pattern),
+// so a knob mismatch can never take Ask down.
 async function anthropicFetch(body, timeoutMs = 60000) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": API_KEY(),
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
+  const model = body.model || MODEL();
+  const fast = SPEED === "fast" && /opus/.test(model);
+  const think = THINKING; // "off" | "deep" | ""
+  const fable = /fable|mythos/.test(model);
+  const modern = fable || /opus-4-[789]|sonnet-5|opus-5/.test(model);
+  const thinkBody = think === "off" ? (fable ? { output_config: { effort: "low" } } : { thinking: { type: "disabled" } })
+    : think === "deep" ? (modern
+        ? { ...(fable ? {} : { thinking: { type: "adaptive" } }), output_config: { effort: "xhigh" }, max_tokens: Math.max(body.max_tokens || 2000, 8000) }
+        : { thinking: { type: "enabled", budget_tokens: 6000 }, max_tokens: Math.max(body.max_tokens || 2000, 8000) })
+    : {};
+  const plainHeaders = { "x-api-key": API_KEY(), "anthropic-version": "2023-06-01", "content-type": "application/json" };
+  const post = (headers, b) => fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", headers, body: JSON.stringify(b), signal: AbortSignal.timeout(timeoutMs),
   });
+  let res = await post(
+    { ...plainHeaders, ...(fast ? { "anthropic-beta": "fast-mode-2026-02-01" } : {}) },
+    { ...body, ...(fast ? { speed: "fast" } : {}), ...thinkBody }
+  );
+  if (!res.ok && (fast || think)) res = await post(plainHeaders, body); // strip the knobs, try plain
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return res.json();
 }
@@ -114,9 +133,10 @@ async function anthropicFetch(body, timeoutMs = 60000) {
 
 const ASK_TOOLS = [
   { name: "query_logs",
-    description: "Run one read-only SQLite SELECT (aggregate only: GROUP BY / COUNT / SUM, never raw record rows). Tables: v_logs(system_id, seq, ts_client, ts_server, category, action, payload_json) and v_warnings(system_id, severity, title, detail, status, created_at). payload_json is a JSON string; use json_extract(payload_json, '$.field') to reach a value (e.g. account_name, message, rows). Timestamps are ISO 8601 strings; compare as text, group a day with substr(ts_client,1,10). Returns { queryIndex, columns, rows } — reference queryIndex in present.",
+    description: "Run one read-only SQLite SELECT (aggregate only: GROUP BY / COUNT / SUM, never raw record rows). Tables: v_logs(system_id, seq, ts_client, ts_server, category, action, payload_json) and v_warnings(system_id, severity, title, detail, status, created_at). payload_json is a JSON string; use json_extract(payload_json, '$.field') to reach a value (e.g. account_name, message, rows). Timestamps are ISO 8601 strings; compare as text, group a day with substr(ts_client,1,10). Returns { queryIndex, columns, rows }; reference queryIndex in present.",
     input_schema: { type: "object", properties: { sql: { type: "string" } }, required: ["sql"] } },
   { name: "present",
+    cache_control: { type: "ephemeral" }, // caches the whole tools block across hops + turns
     description: "Lay out a small visual dashboard from query results. The server fills every number from the referenced query rows, so you never type a value. Compose 2-4 kpi tiles first (headline counts), then 1-3 bar charts of the interesting breakdowns.",
     input_schema: { type: "object", properties: {
       title: { type: "string", description: "Short dashboard title, e.g. 'Today at a glance'" },
@@ -206,9 +226,13 @@ export async function askLogs(dbRead, messages) {
   let artifacts = [];
   let replyText = "";
 
+  // Cache the system prompt (large, stable within an install) so hops 2..N and
+  // follow-up questions reuse it instead of re-billing/re-processing it each time.
+  const systemBlocks = [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
+
   for (let hop = 0; hop < 7; hop++) {
     const resp = await anthropicFetch({
-      model: MODEL(), max_tokens: 1600, system, tools: ASK_TOOLS, messages: convo,
+      model: MODEL(), max_tokens: 1600, system: systemBlocks, tools: ASK_TOOLS, messages: convo,
     });
     convo.push({ role: "assistant", content: resp.content });
     const toolUses = resp.content.filter((b) => b.type === "tool_use");
@@ -234,6 +258,8 @@ export async function askLogs(dbRead, messages) {
       results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) });
     }
     convo.push({ role: "user", content: results });
+    if (hop === 6) replyText = (replyText ? replyText + " " : "") +
+      "(This one needed more steps than a single pass allows. Try splitting the question.)";
   }
 
   return { reply: replyText || "Here's what I found.", artifacts };
@@ -265,6 +291,10 @@ const RULE_TOOL = [{
           category_like: { type: "string" },
           actor: { type: "string", description: "A specific account name, or omit" },
           files: { type: "array", items: { type: "string" }, description: "Limit to specific database file names, or omit for all files" },
+          field: { type: "string", description: "For value conditions: the field name to test (e.g. 'Amount', 'Salary')" },
+          op: { type: "string", enum: ["gte", "gt", "lte", "lt", "eq", "ne"], description: "Comparison operator for field/value" },
+          value: { type: "string", description: "The value to compare against; currency like '$5,000' is fine" },
+          silence: { type: "boolean", description: "Fire when a system that normally logs has gone quiet (broken logging)" },
           rows_gte: { type: "number", description: "For big exports: payload.rows at or above this" },
           off_hours: { type: "boolean", description: "Only outside business hours" },
           weekend: { type: "boolean", description: "Only on weekends" },

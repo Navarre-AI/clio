@@ -41,6 +41,25 @@ function buildWhere(db, match, sinceIso) {
   if (Number(match.rows_gte) > 0) {
     where.push("CAST(json_extract(payload_json, '$.rows') AS INTEGER) >= ?"); params.push(Number(match.rows_gte));
   }
+  // Numeric/value conditions on a payload field: field + op + value. The field
+  // is looked up in the changed value first (new value), then the flat data,
+  // then the top-level payload, so "amount over 5000" works on edits and events.
+  if (match.field && match.value !== undefined && match.value !== "") {
+    const op = ({ gte: ">=", gt: ">", lte: "<=", lt: "<", eq: "=", ne: "<>" })[match.op] || ">=";
+    const f = String(match.field).replace(/["'\\]/g, "");
+    const cleanVal = String(match.value).replace(/[$,\s]/g, ""); // strip $ , and spaces
+    const numeric = /^-?\d+(\.\d+)?$/.test(cleanVal);
+    // look in the changed new-value first, then the flat data, then top-level
+    const coalesced = `COALESCE(json_extract(payload_json,'$.changed."${f}".to'), json_extract(payload_json,'$.data."${f}"'), json_extract(payload_json,'$."${f}"'))`;
+    if (numeric) {
+      // strip currency/commas from the stored value too, so "$7,500" compares as 7500
+      where.push(`CAST(REPLACE(REPLACE(${coalesced},'$',''),',','') AS REAL) ${op} ?`);
+      params.push(Number(cleanVal));
+    } else {
+      where.push(`${coalesced} ${op === "<>" ? "<>" : "="} ?`);
+      params.push(String(match.value));
+    }
+  }
   if (match.off_hours) {
     const { h1, h2 } = businessBounds(db);
     where.push(`CAST(strftime('%H', datetime(ts_server, ?)) AS INTEGER) NOT BETWEEN ? AND ?`);
@@ -58,6 +77,29 @@ function buildWhere(db, match, sinceIso) {
 export function evaluateRule(db, rule, now = Date.now()) {
   let match = {};
   try { match = JSON.parse(rule.match_json); } catch { return null; }
+
+  // Silence is the absence of entries: a system with a real baseline that has
+  // logged nothing recently. The one rule that flags broken logging.
+  if (match.silence) {
+    const quietHrs = Number(match.quiet_hours) || 36;
+    const baseStart = new Date(now - 15 * 86400000).toISOString();
+    const cutoff = new Date(now - quietHrs * 3600000).toISOString();
+    const rows = db.prepare(
+      `SELECT system_id, COUNT(*) AS base, MAX(ts_server) AS last_ts FROM log_entries
+       WHERE system_id != 'clio' AND ts_server >= ? GROUP BY system_id`
+    ).all(baseStart);
+    const findings = [];
+    for (const r of rows) {
+      if (r.base >= 14 && r.last_ts && r.last_ts < cutoff) {
+        findings.push({ system_id: r.system_id, severity: rule.severity, title: rule.name,
+          detail: `${rule.description} No entries since ${r.last_ts.slice(0, 16).replace("T", " ")}, after ${r.base} in the prior 15 days.`,
+          class: rule.class || null, source: `rule:${rule.id}`,
+          evidence: { rule_id: rule.id, last_entry: r.last_ts, baseline_15d: r.base } });
+      }
+    }
+    return findings;
+  }
+
   const windowMin = Number(match.window_minutes) || 1440;
   const sinceIso = new Date(now - windowMin * 60000).toISOString();
   const { sql, params } = buildWhere(db, match, sinceIso);
@@ -79,7 +121,7 @@ export function evaluateRule(db, rule, now = Date.now()) {
     const actors = [...new Set(hits.map((h) => {
       try { return JSON.parse(h.payload_json).account_name; } catch { return null; }
     }).filter(Boolean))];
-    const detail = `${rule.description} — ${hits.length} matching event${hits.length === 1 ? "" : "s"} ` +
+    const detail = `${rule.description}: ${hits.length} matching event${hits.length === 1 ? "" : "s"} ` +
       `in the last ${humanWindow(windowMin)}` + (actors.length ? ` (${actors.join(", ")})` : "") + ".";
     findings.push({
       system_id: systemId,
@@ -156,15 +198,48 @@ export function createRule(db, r) {
   return db.prepare("SELECT * FROM rules WHERE id = ?").get(id);
 }
 
+export function updateRule(db, id, r) {
+  const sets = []; const params = [];
+  for (const k of ["name", "description", "effect", "severity", "class"]) {
+    if (r[k] !== undefined) { sets.push(`${k} = ?`); params.push(r[k] === null ? null : String(r[k])); }
+  }
+  if (r.enabled !== undefined) { sets.push("enabled = ?"); params.push(r.enabled ? 1 : 0); }
+  if (r.match !== undefined) { sets.push("match_json = ?"); params.push(JSON.stringify(r.match)); }
+  if (!sets.length) return db.prepare("SELECT * FROM rules WHERE id = ?").get(id);
+  params.push(id);
+  db.prepare(`UPDATE rules SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  return db.prepare("SELECT * FROM rules WHERE id = ?").get(id);
+}
+
 export function listRules(db) {
   const rules = db.prepare("SELECT * FROM rules ORDER BY created_at DESC").all();
-  // annotate with 30-day dry-run counts so the list can show "fired N times"
   return rules.map((r) => {
     let match = {}; try { match = JSON.parse(r.match_json); } catch {}
     let would = null;
     try { would = dryRun(db, match, 30).would_fire; } catch {}
     return { ...r, enabled: !!r.enabled, match, would_fire_30d: would };
   });
+}
+
+// A rule's firings = warnings it produced (source "rule:<id>"), newest first,
+// with the sample matching entries it cited.
+export function ruleFirings(db, id) {
+  return db.prepare(
+    "SELECT id, system_id, severity, title, detail, evidence_json, created_at FROM warnings WHERE source = ? ORDER BY created_at DESC LIMIT 200"
+  ).all("rule:" + id).map((w) => { let ev = null; try { ev = JSON.parse(w.evidence_json); } catch {} return { ...w, evidence: ev }; });
+}
+
+// Sensible defaults seeded on a fresh install, so day one is useful. The
+// flagship: a database that normally logs going quiet (logging probably broke).
+export function seedDefaultRules(db) {
+  if (db.prepare("SELECT COUNT(*) n FROM rules").get().n > 0) return;
+  const defaults = [
+    { name: "Logging went quiet", description: "A system that normally logs has gone silent, which usually means logging broke (a script change, a removed trigger, or a server offline).", severity: "warn", match: { silence: true } },
+    { name: "Weekend activity", description: "Any changes made on a weekend.", severity: "info", match: { weekend: true } },
+    { name: "Mass deletion", description: "20 or more record deletions within an hour.", severity: "critical", class: "HIPAA", match: { action_like: "%.deleted", count_gte: 20, window_minutes: 60 } },
+    { name: "Big export", description: "An export of 1,000 or more records.", severity: "warn", match: { rows_gte: 1000 } },
+  ];
+  for (const d of defaults) createRule(db, { ...d, effect: "alert" });
 }
 
 function humanWindow(min) {

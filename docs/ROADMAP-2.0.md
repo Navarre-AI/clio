@@ -62,6 +62,13 @@ The raw log is the source of truth; history, before-values, and every slice
 SQL, no precomputation. This is the queryable-power payoff of storing raw.
 (Design note, mostly already true; formalize the filters in the UI/API.)
 
+## Retroactive rule runs
+After a rule is created or edited, offer a fresh run that applies it to the
+EXISTING log history, generating its firings/matches from the past, not just
+from new entries going forward. (The dry-run preview already counts would-have
+-fired; this actually materializes the matches under the rule.) Explicitly not
+in 1.x.
+
 ## Usage log (audit the auditors)
 A meta-log that tracks usage of the Clio logs themselves: who viewed which
 record's history, who ran which Ask query, who read or exported what, when.

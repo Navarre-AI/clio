@@ -200,14 +200,25 @@ export async function runScan(db, { force = false, aiFindings = null, ruleFindin
     .run(scanId, iso(now), scanDate);
 
   try {
-    const systems = db.prepare("SELECT DISTINCT system_id FROM log_entries").all()
+    // Never watchdog Clio's own self-log: its internal events (scan.run, key_minted)
+    // would otherwise trip "new event type" every scan, in a self-feeding loop.
+    const systems = db.prepare("SELECT DISTINCT system_id FROM log_entries WHERE system_id != 'clio'").all()
       .map((r) => r.system_id);
     let findings = 0;
     const ins = db.prepare(
       `INSERT INTO warnings (id, system_id, severity, title, detail, evidence_json, scan_id, source, class)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
+    // Dedup: a finding is "the same" by system + source + title. Don't re-create it if an
+    // open one already exists, or if it was acknowledged within the last 20 hours. This is
+    // what makes acknowledgements stick instead of the finding re-appearing every scan.
+    const dupe = db.prepare(
+      `SELECT 1 FROM warnings WHERE system_id = ? AND source = ? AND title = ?
+         AND (status = 'open' OR (status = 'acknowledged' AND created_at > datetime('now','-20 hours')))
+       LIMIT 1`
+    );
     const put = (w, source, cls) => {
+      if (dupe.get(w.system_id, source, w.title)) return; // already surfaced, or acked recently
       ins.run(randomUUID(), w.system_id, w.severity, w.title, w.detail,
         JSON.stringify(w.evidence ?? null), scanId, source, cls ?? null);
       findings++;

@@ -33,39 +33,48 @@
   .footbtn:hover { background:var(--panel); color:var(--ink); }
   .footinfo { color:var(--dim); font-size:11.5px; margin-top:6px; padding:0 8px; }
   .main { flex:1; display:flex; flex-direction:column; min-width:0; }
-  .main-head { display:flex; align-items:center; gap:12px; padding:16px 26px 12px; border-bottom:1px solid var(--line); }
-  .main-head .title { font-family:var(--serif); font-size:20px; font-weight:600; }
+  .main-head { display:flex; align-items:center; gap:12px; padding:18px 26px 14px; border-bottom:1px solid var(--line); }
+  .main-head .title { font-family:var(--serif); font-size:24px; font-weight:600; }
   .main-head .sub { color:var(--muted); font-size:13px; }
   .main-head .right { margin-left:auto; display:flex; gap:8px; align-items:center; }
   .view { flex:1; overflow-y:auto; display:none; } .view.on { display:flex; flex-direction:column; }
-  .wrap { max-width:940px; margin:0 auto; width:100%; padding:20px 26px 40px; } .wrap.wide { max-width:1080px; }
+  .wrap { max-width:940px; margin:0 auto; width:100%; padding:20px 26px 40px; } .wrap.wide { max-width:1120px; }
   .btn { padding:7px 15px; border-radius:9px; background:var(--accent); color:#fff; font-weight:600; font-size:13.5px; } .btn:hover { filter:brightness(1.06); }
   .btn.ghost { background:var(--panel2); color:var(--ink); } .btn.sm { padding:5px 11px; font-size:12.5px; } .btn:disabled { opacity:.5; cursor:default; }
   .link { color:var(--accent2); font-size:12.5px; } .link.danger { color:var(--bad); }
   .input { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:9px 12px; color:var(--ink); font-size:13.5px; width:100%; }
   .input:focus { outline:none; border-color:var(--accent2); box-shadow:0 0 0 3px rgba(217,119,87,.15); }
   .field { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; } .field > span { font-size:12.5px; font-weight:500; color:var(--muted); }
+  .frow { display:flex; gap:12px; } .frow > .field { flex:1; }
+  .copybtn { flex:none; padding:6px 9px; border:1px solid var(--line); border-radius:8px; background:var(--panel2); font-size:13px; } .copybtn:hover { border-color:var(--accent2); }
   .pulsebar { display:flex; gap:13px; align-items:flex-start; background:linear-gradient(135deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-radius:14px; padding:15px 17px; margin-bottom:18px; box-shadow:var(--shadow); }
   .pulsebar svg { width:26px; height:26px; flex:none; margin-top:1px; } .pulsebar .ptext { font-size:14.5px; } .pulsebar .pmeta { color:var(--dim); font-size:11.5px; margin-top:5px; }
-  #thread { display:flex; flex-direction:column; gap:14px; }
+  #thread,#ruleThread { display:flex; flex-direction:column; gap:14px; }
   .msg { max-width:86%; padding:11px 15px; border-radius:14px; white-space:pre-wrap; word-wrap:break-word; }
   .msg.user { align-self:flex-end; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; box-shadow:0 2px 8px rgba(193,95,60,.2); }
   .msg.bot { align-self:flex-start; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); }
   .msg.meta { align-self:center; color:var(--muted); font-size:12.5px; background:none; }
-  .chips { display:flex; flex-wrap:wrap; gap:7px; margin-top:4px; }
-  .chip { background:var(--panel2); border:1px solid var(--line); border-radius:18px; padding:6px 13px; font-size:12.5px; color:var(--muted); cursor:pointer; } .chip:hover { border-color:var(--accent2); color:var(--ink); }
-  .chip.on { background:var(--accent2); color:#fff; border-color:var(--accent2); }
   .composer { border-top:1px solid var(--line); padding:14px 26px; display:flex; justify-content:center; }
   .composer .inner { max-width:940px; width:100%; display:flex; gap:9px; }
   .composer textarea { flex:1; resize:none; height:46px; border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:var(--panel); color:var(--ink); } .composer textarea:focus { outline:none; border-color:var(--accent2); }
   .sendbtn { background:linear-gradient(135deg,var(--accent2),var(--accent)); color:#fff; border-radius:12px; padding:0 20px; font-weight:600; } .sendbtn:hover { filter:brightness(1.07); }
   .scroll { overflow-x:auto; }
-  .feedbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
   .feed { display:flex; flex-direction:column; gap:6px; }
+  .logtbl { width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px; }
+  .logtbl th { position:sticky; top:0; background:var(--bg); text-align:left; font-size:11.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; padding:8px 10px; border-bottom:2px solid var(--line); cursor:pointer; user-select:none; white-space:nowrap; overflow:hidden; }
+  .logtbl th:hover { color:var(--ink); }
+  .logtbl th .grip { position:absolute; right:0; top:0; bottom:0; width:7px; cursor:col-resize; }
+  .logtbl th .grip:hover, .logtbl th .grip.dragging { background:var(--accent2); opacity:.5; }
+  .logtbl th .arr { color:var(--accent); margin-left:4px; }
+  .logtbl td { padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:baseline; }
+  .logtbl tbody tr { cursor:pointer; } .logtbl tbody tr:hover { background:var(--panel); }
+  .logtbl tr.fresh { animation:arrive .9s ease; }
+  .logtbl .num { font-variant-numeric:tabular-nums; color:var(--muted); }
   .row { display:flex; gap:11px; align-items:baseline; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:9px 13px; font-size:13px; box-shadow:var(--shadow); }
   .row.fresh { animation:arrive .9s ease; } @keyframes arrive { from { background:var(--goodbg); } to { background:var(--panel); } }
-  .row .t { color:var(--dim); font-size:11px; white-space:nowrap; width:56px; flex:none; }
-  .row .sys { color:var(--muted); font-size:11.5px; white-space:nowrap; flex:none; width:96px; overflow:hidden; text-overflow:ellipsis; }
+  .row .t { color:var(--dim); font-size:11px; white-space:nowrap; width:74px; flex:none; }
+  .row .sys { color:var(--muted); font-size:11.5px; white-space:nowrap; flex:none; width:110px; overflow:hidden; text-overflow:ellipsis; }
   .row .main { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; } .row .main .did { font-weight:400; color:var(--muted); }
   .tag { flex:none; font-size:10px; font-weight:700; padding:1px 7px; border-radius:10px; text-transform:uppercase; letter-spacing:.03em; }
   .tag.create { background:var(--goodbg); color:var(--good); } .tag.read { background:var(--panel2); color:var(--muted); }
@@ -76,6 +85,7 @@
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:13px; }
   .scard { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); }
   .scard-h { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px; }
+  .scard-h .sub { font-weight:400; text-transform:none; letter-spacing:0; color:var(--dim); }
   .syscard { cursor:pointer; } .syscard:hover { border-color:var(--accent2); }
   .syscard .sys { font-family:var(--serif); font-size:18px; font-weight:600; display:flex; align-items:center; gap:8px; }
   .syscard .today { margin-left:auto; font-size:12.5px; font-weight:600; background:var(--goodbg); color:var(--good); border-radius:12px; padding:1px 10px; }
@@ -86,18 +96,25 @@
   .b-warn { background:var(--warnbg); color:var(--warnc); } .b-info { background:var(--panel2); color:var(--muted); }
   .b-critical { background:var(--critbg); color:var(--critc); } .b-hipaa { background:#efe3f5; color:#7a3ea0; } html.dark .b-hipaa { background:#2e2440; color:#c9a6e6; }
   .warning { display:flex; gap:12px; align-items:flex-start; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px 15px; margin-bottom:9px; box-shadow:var(--shadow); }
+  .warning.click { cursor:pointer; } .warning.click:hover { border-color:var(--accent2); }
   .warning .body { flex:1; } .warning .title { font-weight:600; } .warning .detail { font-size:13px; color:var(--muted); margin-top:2px; } .warning .src { font-size:10.5px; color:var(--dim); }
   .quiet { color:var(--dim); font-size:13.5px; padding:14px 2px; }
-  .overlay { position:fixed; inset:0; background:rgba(30,26,18,.55); display:none; align-items:center; justify-content:center; z-index:40; padding:5vh 16px; } .overlay.open { display:flex; }
-  .panel { width:min(680px,95vw); max-height:88vh; background:var(--bg); border:1px solid var(--line); border-radius:14px; display:flex; flex-direction:column; box-shadow:0 12px 48px rgba(0,0,0,.3); }
+  .overlay { position:fixed; inset:0; background:rgba(30,26,18,.55); display:none; align-items:flex-start; justify-content:center; z-index:40; padding:5vh 16px; } .overlay.open { display:flex; }
+  .panel { width:min(720px,95vw); height:86vh; background:var(--panel); border:1px solid var(--line); border-radius:14px; display:flex; flex-direction:column; box-shadow:0 12px 48px rgba(0,0,0,.45); }
+  html.dark .panel { border-color:#4a4432; }
+  .panel.auto { height:auto; max-height:86vh; }
+  .panel .scard { background:var(--panel2); } /* nested surface: pop cards inside the modal */
+  .panel .kv .kvv { color:var(--ink); } .panel .rawbox { background:var(--bg); }
   .p-head { display:flex; align-items:center; padding:15px 20px; border-bottom:1px solid var(--line); } .p-head .ttl { font-family:var(--serif); font-size:18px; font-weight:600; } .p-head .x { margin-left:auto; color:var(--dim); font-size:20px; }
   .tabs { display:flex; gap:6px; padding:10px 18px 0; border-bottom:1px solid var(--line); } .tabs button { border:1px solid transparent; border-bottom:none; padding:8px 16px; border-radius:9px 9px 0 0; color:var(--muted); font-size:13.5px; font-weight:600; } .tabs button.on { background:var(--panel); border-color:var(--line); color:var(--ink); margin-bottom:-1px; padding-bottom:9px; }
   .p-list { overflow-y:auto; padding:16px 18px 24px; flex:1; }
+  .p-foot { display:flex; align-items:center; gap:10px; padding:12px 18px; border-top:1px solid var(--line); }
+  .p-foot .logo { height:22px; color:var(--ink); } .p-foot .sp { flex:1; }
   .hint { color:var(--dim); font-size:12px; margin-top:4px; }
   .setrow { display:flex; gap:10px; align-items:center; margin:8px 0; flex-wrap:wrap; } .setrow label { font-size:13px; color:var(--muted); width:130px; flex:none; }
   .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:13px; } .kv .kk { color:var(--muted); white-space:nowrap; } .kv .kvv { word-break:break-word; }
   .rawbox { font-family:ui-monospace,Menlo,monospace; font-size:11.5px; background:var(--panel2); border-radius:8px; padding:10px; white-space:pre-wrap; word-break:break-all; margin-top:10px; }
-  .keybox { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--panel2); border-radius:8px; padding:9px 11px; word-break:break-all; margin-top:8px; }
+  .urlbox { display:flex; gap:8px; align-items:center; margin-top:8px; } .urlbox .u { flex:1; font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--panel2); border-radius:8px; padding:9px 11px; word-break:break-all; }
   .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin:10px 0; }
   .kpi { background:var(--panel2); border:1px solid var(--line); border-radius:13px; padding:12px 14px; } .kpi .k { text-transform:uppercase; letter-spacing:.06em; font-size:10.5px; font-weight:600; color:var(--muted); } .kpi .v { font-size:24px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:3px; }
   .chart { margin:10px 0; } .chart-h { font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
@@ -105,113 +122,121 @@
   .barrow .bt { flex:1; height:16px; background:var(--panel2); border-radius:5px; overflow:hidden; } .barrow .bf { display:block; height:100%; border-radius:5px; background:linear-gradient(90deg,var(--accent2),var(--accent)); } .barrow .bv { width:52px; flex:none; text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
   .msg table,table.tbl { border-collapse:collapse; margin-top:8px; font-size:12.5px; width:100%; } .msg th,.msg td,table.tbl th,table.tbl td { text-align:left; padding:5px 9px; border-bottom:1px solid var(--line); } .msg th,table.tbl th { color:var(--muted); font-weight:600; }
   .toggle { position:relative; width:38px; height:22px; border-radius:12px; background:var(--line); cursor:pointer; flex:none; transition:background .15s; } .toggle.on { background:var(--good); } .toggle .knob { position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; } .toggle.on .knob { left:18px; }
-  .banner { background:var(--warnbg); border:1px solid var(--warnc); color:var(--warnc); border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:14px; display:flex; align-items:center; gap:10px; }
+  .banner { border-radius:10px; padding:11px 15px; font-size:13.5px; margin-bottom:16px; display:flex; align-items:center; gap:10px; }
+  .banner.new { background:var(--warnbg); border:1px solid var(--warnc); color:var(--warnc); font-weight:600; }
+  .banner.bad { background:var(--critbg); border:1px solid var(--critc); color:var(--critc); flex-direction:column; align-items:flex-start; gap:4px; }
   .dbrow { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); } .dbrow .dbc { color:var(--muted); font-size:12px; }
+  .ms { position:relative; } .ms .msbtn { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer; min-width:150px; text-align:left; }
+  .ms .mspop { position:absolute; top:100%; left:0; margin-top:4px; background:var(--panel); border:1px solid var(--line); border-radius:9px; box-shadow:var(--shadow); padding:6px; z-index:10; max-height:260px; overflow:auto; min-width:200px; display:none; } .ms.open .mspop { display:block; }
+  .ms .mspop label { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:6px; font-size:13px; cursor:pointer; white-space:nowrap; } .ms .mspop label:hover { background:var(--panel2); }
+  .chips { display:flex; flex-wrap:wrap; gap:7px; } .chip { background:var(--panel2); border:1px solid var(--line); border-radius:18px; padding:5px 12px; font-size:12.5px; color:var(--muted); cursor:pointer; } .chip:hover { border-color:var(--accent2); }
 </style>
 </head>
 <body>
 <aside class="side">
-  <div class="side-top">
-    <div class="brand">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <div>Clio<span class="tag">FileMaker logging for the AI Age</span></div>
-    </div>
-  </div>
+  <div class="side-top"><div class="brand">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div>Clio<span class="tag">FileMaker logging for the AI Age</span></div></div></div>
   <div class="side-list">
     <div class="navitem on" data-v="systems"><span class="ico">▦</span> Systems</div>
     <div class="navitem" data-v="ask"><span class="ico">✦</span> Ask the logs</div>
-    <div class="navitem" data-v="live"><span class="ico">◉</span> Live</div>
-    <div class="navitem" data-v="history"><span class="ico">↺</span> History</div>
+    <div class="navitem" data-v="log"><span class="ico">◉</span> Log Entries</div>
+    <div class="navitem" data-v="rules"><span class="ico">◆</span> Rules</div>
     <div class="navitem" data-v="warnings"><span class="ico">⚠</span> Warnings <span class="cnt" id="warnCnt" style="display:none"></span></div>
   </div>
-  <div class="side-foot">
-    <div class="footrow"><button class="footbtn" id="settingsBtn"><span>⚙</span> Settings</button><button class="footbtn" id="themeBtn" style="margin-left:auto" title="Theme">◐</button></div>
-    <div class="footinfo" id="footInfo"></div>
-  </div>
+  <div class="side-foot"><div class="footrow"><button class="footbtn" id="settingsBtn"><span>⚙</span> Settings</button><button class="footbtn" id="themeBtn" style="margin-left:auto" title="Theme">◐</button></div><div class="footinfo" id="footInfo"></div></div>
 </aside>
 
 <main class="main">
   <div class="main-head"><span class="title" id="viewTitle">Systems</span><span class="sub" id="viewSub"></span><div class="right" id="viewActions"></div></div>
 
-  <!-- Systems (landing) -->
   <div class="view on" id="v-systems"><div class="wrap wide">
     <div id="wizardBanner"></div>
     <div class="cards" id="systems"></div>
-    <div style="margin-top:16px"><button class="btn ghost sm" id="addSystemBtn">+ Add a system</button></div>
+    <div style="margin-top:16px"><button class="link" id="addSystemBtn">+ Add a system manually</button></div>
   </div></div>
 
-  <!-- Ask -->
   <div class="view" id="v-ask">
     <div class="wrap" style="flex:1">
-      <div class="pulsebar"><svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <div><div class="ptext" id="pulseText">Reading the room…</div><div class="pmeta" id="pulseMeta"></div></div></div>
+      <div class="pulsebar"><svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div><div class="ptext" id="pulseText">Reading the room…</div><div class="pmeta" id="pulseMeta"></div></div></div>
       <div id="thread"></div>
     </div>
     <div class="composer"><div class="inner"><textarea id="askInput" placeholder="Who deleted invoices this week? Any weekend logins?"></textarea><button class="sendbtn" id="askBtn">Ask</button></div></div>
   </div>
 
-  <!-- Live -->
-  <div class="view" id="v-live"><div class="wrap wide">
+  <div class="view" id="v-log"><div class="wrap wide">
     <div id="rejectBanner"></div>
-    <div class="feedbar">
-      <input class="input" id="feedFilter" placeholder="filter…" style="width:220px">
-      <select class="input" id="feedSystem" style="width:auto"><option value="">all systems</option></select>
-      <span class="quiet" id="feedStatus" style="margin-left:auto;padding:0"></span>
+    <div class="bar">
+      <span style="position:relative;flex:none"><span style="position:absolute;left:10px;top:8px;color:var(--dim)">⌕</span><input class="input" id="logSearch" placeholder="Search" style="width:240px;padding-left:30px"></span>
+      <div class="ms" id="lgSysMs"><button class="msbtn" onclick="toggleMs('lgSysMs')">All systems</button><div class="mspop" id="lgSysPop"></div></div>
+      <span id="lgPersonWrap"><select class="input" id="lgPerson" style="width:auto;max-width:170px"><option value="">Anyone</option></select></span>
+      <select class="input" id="lgWhen" style="width:auto"><option value="">All time</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">This week</option><option value="lastweek">Last week</option><option value="month">This month</option><option value="range">Set range…</option></select>
+      <span id="lgRange" style="display:none;gap:6px" class="bar"><input type="datetime-local" id="lgFrom" class="input" style="width:auto"><span class="quiet" style="padding:0">to</span><input type="datetime-local" id="lgTo" class="input" style="width:auto"></span>
+      <span class="quiet" id="logCount" style="padding:0"></span>
+      <button class="btn sm" id="logNewPill" style="display:none"></button>
+      <span class="quiet" id="logStatus" style="margin-left:auto;padding:0"></span>
     </div>
-    <div class="feed" id="feed"><div class="quiet">Waiting for entries…</div></div>
+    <div class="scroll"><table class="logtbl" id="logTbl"><thead><tr id="logHead"></tr></thead><tbody id="logBody"></tbody></table></div>
+    <div style="text-align:center;padding:10px"><button class="btn ghost sm" id="logMore" style="display:none">Load more</button></div>
   </div></div>
 
-  <!-- History -->
-  <div class="view" id="v-history"><div class="wrap wide">
-    <div class="feedbar" id="histFilters">
-      <select class="input" id="hSystems" multiple size="1" style="width:auto;min-width:150px"></select>
-      <span id="hActions" class="chips"></span>
-      <select class="input" id="hWhen" style="width:auto"><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week" selected>This week</option><option value="month">This month</option><option value="range">Set range…</option></select>
-      <span id="hRange" style="display:none;gap:6px" class="feedbar">
-        <input class="input" id="hFrom" type="datetime-local" style="width:auto"><span class="quiet" style="padding:0">to</span><input class="input" id="hTo" type="datetime-local" style="width:auto"></span>
-      <span class="quiet" id="hStatus" style="margin-left:auto;padding:0"></span>
-    </div>
-    <div id="history"></div>
+  <div class="view" id="v-rules"><div class="wrap">
+    <div id="rulesList"></div>
   </div></div>
 
-  <!-- Warnings -->
   <div class="view" id="v-warnings"><div class="wrap"><div id="warnings"></div></div></div>
 </main>
 
 <!-- Settings -->
 <div class="overlay" id="settings"><div class="panel">
   <div class="p-head"><span class="ttl">Settings</span><button class="x" id="setClose">✕</button></div>
-  <div class="tabs" id="setTabs"><button data-t="rules" class="on">Rules</button><button data-t="channels">Channels</button><button data-t="ai">AI</button><button data-t="about">About</button></div>
+  <div class="tabs" id="setTabs"><button data-t="ai" class="on">AI</button><button data-t="alerts">Alerts</button><button data-t="about">About</button></div>
   <div class="p-list">
-    <div id="tab-rules">
-      <div class="setrow" style="justify-content:space-between"><div class="scard-h" style="margin:0">Rules</div><button class="btn" id="newRuleBtn">+ New rule</button></div>
-      <div id="rulesList" style="margin-top:12px"></div>
+    <div id="tab-ai">
+      <div class="scard"><div class="scard-h">AI</div>
+        <div class="frow">
+          <div class="field" style="margin-bottom:10px"><span>Model</span><select class="input" id="aiModel"></select></div>
+          <div class="field" id="thinkWrap" style="margin-bottom:10px"><span>Thinking</span><select class="input" id="aiThinking"><option value="">Auto</option><option value="off">Off (fastest)</option><option value="deep">Deep</option></select></div>
+          <div class="field" id="fastWrap" style="margin-bottom:10px"><span>Speed</span><label style="display:flex;align-items:center;gap:8px;font-size:13.5px;padding:9px 0;cursor:pointer"><input type="checkbox" id="aiFast" style="width:16px;height:16px;accent-color:var(--accent)"> Fast mode</label></div>
+        </div>
+        <div class="field" style="margin-bottom:2px"><span>Anthropic API key</span><input type="password" id="aiKey" class="input" placeholder="blank = keep current" autocomplete="off" style="max-width:340px"><span id="aiState" class="hint"></span></div>
+      </div>
     </div>
-    <div id="tab-channels" style="display:none">
-      <div class="scard"><div class="scard-h">Slack</div><div class="field"><span>Incoming webhook URL</span><input class="input" id="chSlack" placeholder="https://hooks.slack.com/services/…"></div></div>
-      <div class="scard" style="margin-top:12px"><div class="scard-h">Webhook</div><div class="field"><span>JSON POST URL</span><input class="input" id="chWebhook" placeholder="https://…"></div></div>
-      <div class="setrow" style="margin-top:12px"><button class="btn" id="chSave">Save</button><button class="btn ghost" id="chTest">Send test alert</button><span class="quiet" id="chStatus" style="padding:0"></span></div>
-    </div>
-    <div id="tab-ai" style="display:none">
-      <div class="scard"><div class="scard-h">Model</div><div class="field"><span>Used for the pulse, ask, and rule writing</span><select class="input" id="aiModel"></select></div><div class="hint" id="aiState"></div></div>
+    <div id="tab-alerts" style="display:none">
+      <div class="scard"><div class="scard-h">Slack</div><div class="field"><span>Incoming webhook URL</span><input class="input" id="chSlack" placeholder="https://hooks.slack.com/services/…"></div><div class="hint">Warn and critical findings post here.</div></div>
+      <div class="setrow" style="margin-top:12px"><button class="btn sm" id="chSave">Save</button><button class="btn ghost sm" id="chTest">Send test</button><span class="quiet" id="chStatus" style="padding:0"></span></div>
     </div>
     <div id="tab-about" style="display:none">
-      <div class="scard"><div class="scard-h">What Clio is</div><div id="aboutBox" style="font-size:13.5px;color:var(--muted);line-height:1.6"></div></div>
+      <div class="scard"><div id="aboutBox" style="font-size:13.5px;color:var(--ink);line-height:1.65"></div></div>
     </div>
+  </div>
+  <div class="p-foot">
+    <a href="https://www.navarre.ai" target="_blank" rel="noopener"><svg class="logo" viewBox="0 0 420 120" aria-label="Navarre AI"><defs><linearGradient id="ntv" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="120"><stop offset="0%" stop-color="#005540"/><stop offset="100%" stop-color="#00FFAA"/></linearGradient><linearGradient id="nth" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="120" y2="0"><stop offset="0%" stop-color="#007858"/><stop offset="100%" stop-color="#00FFD0"/></linearGradient><linearGradient id="nta" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="120"><stop offset="0%" stop-color="#004870"/><stop offset="100%" stop-color="#00D4FF"/></linearGradient><linearGradient id="nor" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="120"><stop offset="0%" stop-color="#D05535"/><stop offset="100%" stop-color="#FFA070"/></linearGradient></defs><path d="M 12,105 L 38,105 L 50,29 L 36,29 L 24,98 Q 20,105 12,105 Z" fill="url(#ntv)" opacity="0.9"/><polygon points="29,29 43,29 83,105 69,105" fill="url(#nth)" opacity="0.9"/><polygon points="74,105 88,105 103,29 89,29" fill="url(#nta)" opacity="0.9"/><circle cx="97" cy="18" r="7" fill="url(#nor)"/><text x="130" y="80" font-family="Playfair Display, Georgia, serif" font-size="52" font-weight="800" fill="currentColor" letter-spacing="-1.5">Navarre<tspan fill="#FFA070">.ai</tspan></text></svg></a>
+    <span class="sp"></span><button class="btn ghost sm" id="licenseBtn">License</button>
   </div>
 </div></div>
 
-<!-- New rule -->
-<div class="overlay" id="ruleModal"><div class="panel" style="max-height:86vh">
-  <div class="p-head"><span class="ttl">New rule</span><button class="x" id="ruleModalClose">✕</button></div>
-  <div class="p-list"><div id="ruleThread" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px"></div>
-    <div class="setrow"><input class="input" id="ruleInput" placeholder="Describe what you want to watch for"><button class="btn" id="ruleAsk">Ask</button></div>
+<div class="overlay" id="licenseOverlay"><div class="panel auto" style="width:min(440px,92vw)">
+  <div class="p-head"><span class="ttl">License</span><button class="x" onclick="$('licenseOverlay').classList.remove('open')">✕</button></div>
+  <div class="p-list" style="font-size:13.5px;line-height:1.65">
+    <p style="margin:0 0 10px"><b>Clio</b> is free to use, modify, and share, under the Clio License.</p>
+    <p style="margin:0 0 10px;color:var(--muted)">Use it, change it, host it. Just keep visible credit that it is based on Clio, do not pass it off as your own, and do not sell it or build it into a paid product without asking. Ships as is, with no warranty of any kind.</p>
+    <p style="margin:0 0 10px">© 2026 Matt Navarre</p>
+    <p style="margin:0"><a href="https://navarre.ai" target="_blank" rel="noopener" style="color:var(--accent2)">navarre.ai</a></p>
+  </div>
+</div></div>
+
+<!-- New / edit rule -->
+<div class="overlay" id="ruleModal"><div class="panel auto">
+  <div class="p-head"><span class="ttl" id="ruleModalTitle">New rule</span><button class="x" id="ruleModalClose">✕</button></div>
+  <div class="p-list"><div id="ruleThread" style="margin-bottom:12px"></div>
+    <div class="bar" id="ruleAskRow"><input class="input" id="ruleInput" placeholder="Describe what you want to watch for"><button class="btn" id="ruleAsk">Ask</button></div>
     <div id="ruleDraft"></div></div>
 </div></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const qs = new URLSearchParams(location.search);
 const KEY = qs.get("key") ? "?key=" + encodeURIComponent(qs.get("key")) : "";
 const api = (p) => p + (KEY && p.includes("?") ? "&" + KEY.slice(1) : KEY);
@@ -221,21 +246,22 @@ const localTime = (iso) => { const d=new Date(iso); return isNaN(d)?iso:d.toLoca
 const localHM = (iso) => { const d=new Date(iso); return isNaN(d)?"":d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); };
 const fmtN = (n) => Number.isFinite(+n) ? (+n).toLocaleString() : String(n);
 const fmtC = (n) => { n=+n; if(!Number.isFinite(n))return String(n); const a=Math.abs(n); if(a>=1e9)return (n/1e9).toFixed(1).replace(/\.0$/,"")+"B"; if(a>=1e6)return (n/1e6).toFixed(1).replace(/\.0$/,"")+"M"; if(a>=1e4)return (n/1e3).toFixed(1).replace(/\.0$/,"")+"K"; return fmtN(n); };
+function copyText(t, btn){ navigator.clipboard.writeText(t).then(()=>{ if(btn){const o=btn.textContent;btn.textContent="✓";setTimeout(()=>btn.textContent=o,1200);} }); }
 
 if (localStorage.clio_theme === "dark" || (!localStorage.clio_theme && matchMedia("(prefers-color-scheme:dark)").matches)) document.documentElement.classList.add("dark");
 $("themeBtn").onclick = () => { const d=document.documentElement.classList.toggle("dark"); localStorage.clio_theme=d?"dark":"light"; };
 
-const TITLES = { systems:["Systems",""], ask:["Ask the logs","ask in plain English"], live:["Live","as it happens"], history:["History","who changed what, sliced any way"], warnings:["Warnings","what's worth a glance"] };
+const TITLES = { systems:["Systems",""], ask:["Ask the logs","ask in plain English"], log:["Log Entries","search, sort, watch live"], rules:["Rules","the watchdog"], warnings:["Warnings","what's worth a glance"] };
 function go(v) {
   document.querySelectorAll(".navitem").forEach((x) => x.classList.toggle("on", x.dataset.v===v));
   document.querySelectorAll(".view").forEach((x) => x.classList.toggle("on", x.id==="v-"+v));
   const [t,s]=TITLES[v]; $("viewTitle").textContent=t; $("viewSub").textContent=s;
-  if (v==="history") runHistory();
+  $("viewActions").innerHTML = v==="rules" ? '<button class="btn sm" id="newRuleBtn2">+ New rule</button>' : "";
+  if(v==="rules"){ $("newRuleBtn2").onclick=openRuleModal; loadRules(); }
+  if(v==="log"){ renderLog(); }
 }
 document.querySelectorAll(".navitem").forEach((n) => n.onclick = () => go(n.dataset.v));
-
-// Esc closes any open modal (topmost first)
-document.addEventListener("keydown", (e) => { if (e.key==="Escape") { const open=[...document.querySelectorAll(".overlay.open")]; if(open.length) open[open.length-1].classList.remove("open"); } });
+document.addEventListener("keydown", (e) => { if (e.key==="Escape") { const o=[...document.querySelectorAll(".overlay.open")]; if(o.length) o[o.length-1].classList.remove("open"); document.querySelectorAll(".ms.open").forEach(m=>m.classList.remove("open")); } });
 
 // ---- action → friendly, CRUD tag ----
 function crud(action, p) {
@@ -250,7 +276,22 @@ function crud(action, p) {
   return { cls:"other", tag:"·" };
 }
 const VERB = { new:"created", created:"created", modified:"edited", deleted:"deleted" };
-function displayName(d) { if(!d||typeof d!=="object")return""; for(const k of ["Company Name","Name","Title","Task Name","Note","field_name"]) if(d[k]) return String(d[k]).slice(0,60); for(const [k,v] of Object.entries(d)){ if(/id|^z_|TS$|date/i.test(k))continue; if(typeof v==="string"&&v&&v.length<50)return v; } return ""; }
+// Bookkeeping fields (modified_time and friends) change on every commit; never show
+// them as substance. Values that LOOK like times/dates/numbers/booleans make lousy
+// record names, so the picker sniffs values too, not just field names.
+function isHousekeepingF(f){ return /^z_|^(modif|creat)/i.test(f) || /(_|\b)(ts|time|timestamp|date)$/i.test(f); }
+function metaValue(v){ const s=String(v??"").trim();
+  return !s || /^\d{1,2}:\d{2}(:\d{2})?(\s*[AP]M)?$/i.test(s) || /^\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}/.test(s) || /^-?\d+([.,]\d+)?$/.test(s) || /^(yes|no|true|false)$/i.test(s); }
+function clampVal(v){ const s=String(v??"").trim(); if(!s)return "(empty)"; return s.length>70 ? s.slice(0,42)+" … "+s.slice(-24) : s; }
+function displayName(d) { if(!d||typeof d!=="object")return "";
+  for(const k of ["Company Name","Name","Title","Task Name","Note","field_name"]) if(d[k]&&!metaValue(d[k])) return String(d[k]).slice(0,60);
+  for(const [k,v] of Object.entries(d)){ if(/id$|^id|^z_/i.test(k)||isHousekeepingF(k))continue; if(typeof v==="string"&&v&&v.length<50&&!metaValue(v))return v; }
+  return ""; }
+const CLIO_ACTIONS = { "clio.scan.run":"watchdog scan ran", "clio.admin.key_minted":"API key minted", "clio.admin.system_created":"system created", "clio.admin.system_confirmed":"system confirmed", "clio.admin.archive":"log archived", "clio.admin.purge":"records purged", "clio.admin.key_revoked":"API key revoked" };
+function friendlyAction(a) { if(/\s/.test(a))return a;
+  if(CLIO_ACTIONS[a])return CLIO_ACTIONS[a];
+  if(a.startsWith("clio."))return a.slice(5).replace(/[_.]/g," ");
+  const p=a.split("."); if(p.length>=3){const t=p[p.length-1]; return `${VERB[t]||t} a ${p[p.length-2]} record`;} return a.replace(/[_.]/g," "); }
 function humanLine(e) {
   let p={}; try{p=JSON.parse(e.payload_json);}catch{return{text:friendlyAction(e.action),who:""};}
   const who = p.account_name || (p.data&&p.data.z_Modifier) || "";
@@ -258,108 +299,105 @@ function humanLine(e) {
   if (p.bulk) return { text:`${fmtN(p.count)} records ${p.op} in ${p.table}`, who };
   const parts=e.action.split("."), op=parts[parts.length-1];
   if (parts.length>=3 && p.table) { const name=displayName(p.data), label=name?`${p.table} "${name}"`:`${p.table} #${p.record_id}`;
-    let text; if(p.changed){const fs=Object.keys(p.changed).filter((f)=>!/^z_/.test(f)); text=fs.length?`changed ${fs.join(", ")} on ${label}`:`touched ${label}`;} else text=`${VERB[op]||op} ${label}`;
-    return { text, who, mute:p.table==="fmLog" }; }
+    let text; if(p.changed){const fs=Object.keys(p.changed).filter((f)=>!isHousekeepingF(f)); text=fs.length?`changed ${fs.join(", ")} on ${label}`:`touched ${label}`;} else text=`${VERB[op]||op} ${label}`;
+    return { text, who }; }
   return { text:friendlyAction(e.action), who };
 }
-function friendlyAction(a) { if(/\s/.test(a))return a; const p=a.split("."); if(p.length>=3){const t=p[p.length-1]; return `${VERB[t]||t} a ${p[p.length-2]} record`;} return a.replace(/[_.]/g," "); }
+const sysName=(id)=>(ov.systems.find((s)=>s.system_id===id)||{}).label||id;
 
 // ---- systems (landing) ----
 let ov = { systems:[], unplaced:[] };
 async function loadOverview() {
   ov = await j("/api/overview");
   $("footInfo").textContent = `v${ov.version} · AI ${ov.ai?"on":"off"}`;
-  $("aboutBox").innerHTML = `<b>Clio</b> — FileMaker logging for the AI Age.<br><br>Your FileMaker databases send log entries to Clio with a single Insert From URL script — every record change, login, and delete, captured by the OnWindowTransaction trigger. Clio stores them in a private database on your own Fly.io server, where they can be searched, analyzed, and cross-referenced instantly. Any number of database files and FileMaker Servers can log to one Clio, each with its own history. A rules-based watchdog flags what you care about (weekend logins, mass deletes, big exports) and can alert you in Slack. Ask questions in plain English and get answers built from your actual log. Because the log lives outside FileMaker, no one with access to your file can quietly rewrite history — and Clio can prove it.<br><br>Matt Navarre · <a href="https://www.navarre.ai" style="color:var(--accent2)">www.navarre.ai</a> · © 2026 · MIT.`;
-  const fsel=$("feedSystem"), fcur=fsel.value;
-  fsel.innerHTML='<option value="">all systems</option>'+ov.systems.map((s)=>`<option ${fcur===s.system_id?"selected":""} value="${esc(s.system_id)}">${esc(s.label||s.system_id)}</option>`).join("");
-  $("hSystems").innerHTML=ov.systems.map((s)=>`<option value="${esc(s.system_id)}" selected>${esc(s.label||s.system_id)}</option>`).join("");
-  // wizard banner
+  $("aboutBox").innerHTML = ABOUT;
+  if($("lgSysPop")) buildLogFilters();
   $("wizardBanner").innerHTML = (ov.unplaced&&ov.unplaced.length)
-    ? `<div class="banner">✦ ${ov.unplaced.length} new database${ov.unplaced.length===1?"":"s"} started logging. <button class="link" onclick="wizard()" style="color:var(--warnc);text-decoration:underline">Set ${ov.unplaced.length===1?"it":"them"} up</button></div>` : "";
+    ? `<div class="banner new">✦ ${ov.unplaced.length} NEW DATABASE${ov.unplaced.length===1?"":"S"} started logging and need${ov.unplaced.length===1?"s":""} a home. <button class="btn sm" onclick="wizard()" style="margin-left:auto">Set up now</button></div>` : "";
   $("systems").innerHTML = ov.systems.length ? ov.systems.map((s) => {
     const files=(s.databases||[]).filter((d)=>d.placed);
     const fl = files.length ? files.map((d)=>esc(d.name)).join(", ") : (s.fm_server?esc(s.fm_server):"&nbsp;");
     return `<div class="scard syscard" onclick="openSystem('${esc(s.system_id)}')">
       <div class="sys">${esc(s.label||s.system_id)} ${s.open_warnings?`<span class="badge b-warn">${s.open_warnings}</span>`:""}<span class="today ${s.today?"":"zero"}">${s.today} today</span></div>
-      <div class="files">${fl}</div>
-      <div class="meta">${fmtN(s.entry_count)} entries · last ${s.last_ts_server?localHM(s.last_ts_server)+" today":"—"}</div></div>`; }).join("")
-    : '<div class="quiet">No systems yet. Add one, put its URL in the FileMaker script, and it starts logging itself.</div>';
+      <div class="files">${fl}</div><div class="meta">${fmtN(s.entry_count)} entries · last ${s.last_ts_server?localHM(s.last_ts_server):"–"}</div></div>`; }).join("")
+    : '<div class="quiet">No systems yet. Add one, paste its URL into the FileMaker script, and it starts logging.</div>';
 }
+async function loadOverviewQuiet(){ try{ ov=await j("/api/overview"); }catch{} }
 
 async function openSystem(sid) {
-  const [ver, logs] = await Promise.all([ j("/api/verify?system_id="+encodeURIComponent(sid)), j("/api/logs?system_id="+encodeURIComponent(sid)+"&limit=6") ]);
+  // Render the detail instantly from logs (limit 6). The full-chain verify can be
+  // 169k+ entries, so it runs AFTER the modal is up and fills in its badge async.
+  const logs = await j("/api/logs?system_id="+encodeURIComponent(sid)+"&limit=6").catch(()=>({entries:[]}));
   const s = ov.systems.find((x)=>x.system_id===sid) || { system_id:sid, databases:[] };
   const files=(s.databases||[]).filter((d)=>d.placed);
-  const fileRows = files.length ? files.map((d)=>`<div class="dbrow"><input class="input" style="padding:5px 9px" value="${esc(d.name)}" onchange="renameFile('${esc(sid)}','${esc(d.file_name)}',this.value)"><span class="dbc">${fmtN(d.entry_count)} entries</span><button class="link" onclick="unlinkFile('${esc(sid)}','${esc(d.file_name)}')">unlink</button></div>`).join("") : '<div class="quiet">No files yet.</div>';
-  const tail = (logs.entries||[]).map((e)=>{let p={};try{p=JSON.parse(e.payload_json);}catch{} const c=crud(e.action,p),h=humanLine(e); return `<div class="row" style="box-shadow:none;cursor:default"><span class="t">${localHM(e.ts_server)}</span><span class="tag ${c.cls}">${c.tag}</span><span class="main">${h.who?esc(h.who)+" ":""}<span class="did">${esc(redact(h.text))}</span></span></div>`;}).join("") || '<div class="quiet">No entries yet.</div>';
+  const fileRows = files.length ? files.map((d)=>{const fsid=d.system_id||sid;return `<div class="dbrow"><input class="input" style="padding:5px 9px" value="${esc(d.name)}" onchange="renameFile('${esc(fsid)}','${esc(d.file_name)}',this.value)"><span class="dbc">${fmtN(d.entry_count)} entries${d.linked?" · linked":""}</span><button class="link" onclick="unlinkFile('${esc(fsid)}','${esc(d.file_name)}')">unlink</button></div>`;}).join("") : '<div class="quiet">No files yet.</div>';
+  const tail = (logs.entries||[]).map((e)=>{let p={};try{p=JSON.parse(e.payload_json);}catch{} const c=crud(e.action,p),h=humanLine(e); return `<div class="row" style="box-shadow:none"><span class="t">${localHM(e.ts_server)}</span><span class="tag ${c.cls}">${c.tag}</span><span class="main">${h.who?esc(h.who)+" ":""}<span class="did">${esc(redact(h.text))}</span></span></div>`;}).join("") || '<div class="quiet">No entries yet.</div>';
   const TZ=[["","(not set)"],["-8","Pacific (UTC-8)"],["-5","Eastern (UTC-5)"],["0","UTC"],["1","London/CET (UTC+1)"],["3","Athens/Crete (UTC+3)"]];
-  modal(esc(s.label||sid), `
-    <div class="scard"><div class="scard-h">Name &amp; server</div>
-      <div class="field"><span>Name</span><input class="input" id="sysLabel" value="${esc(s.label||"")}" placeholder="${esc(sid)}"></div>
-      <div class="field"><span>FileMaker server</span><input class="input" id="sysServer" value="${esc(s.fm_server||"")}"></div>
-      <div class="field"><span>Time zone</span><select class="input" id="sysTz">${TZ.map(([v,l])=>`<option value="${v}" ${String(s.tz_offset??"")===v?"selected":""}>${l}</option>`).join("")}</select></div>
-      <div class="setrow"><span class="toggle ${s.display?"on":""}" id="sysDisp" onclick="this.classList.toggle('on')"><span class="knob"></span></span><span style="width:auto">Show in Systems</span></div>
-      <div class="setrow"><button class="btn sm" onclick="saveSystem('${esc(sid)}')">Save</button><span class="quiet" id="sysMsg" style="padding:0"></span></div></div>
+  modal(s.label||sid, `
+    <div class="scard"><div class="scard-h">Name &amp; server <span class="sub" id="sysMsg"></span></div>
+      <div class="field"><span>Name</span><input class="input" id="sysLabel" value="${esc(s.label||"")}" placeholder="${esc(sid)}" onchange="saveSystem('${esc(sid)}')"></div>
+      <div class="field"><span>FileMaker server</span><input class="input" id="sysServer" value="${esc(s.fm_server||"")}" onchange="saveSystem('${esc(sid)}')"></div>
+      <div class="field"><span>Time zone</span><select class="input" id="sysTz" onchange="saveSystem('${esc(sid)}')">${TZ.map(([v,l])=>`<option value="${v}" ${String(s.tz_offset??"")===v?"selected":""}>${l}</option>`).join("")}</select></div>
+      <div class="setrow"><span class="toggle ${s.display?"on":""}" id="sysDisp" onclick="this.classList.toggle('on');saveSystem('${esc(sid)}')"><span class="knob"></span></span><span style="width:auto">Show in Systems</span></div></div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Database files</div>${fileRows}</div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Log</div>
       <div class="setrow"><label>Entries</label><span>${fmtN(s.entry_count||0)}</span></div>
-      <div class="setrow"><label>Status</label><span class="badge ${ver.valid?"b-ok":"b-bad"}">${ver.valid?"Verified ✓":`Problem at #${ver.first_bad_seq}`}</span></div></div>
-    <div class="scard" style="margin-top:12px"><div class="scard-h">Recent activity <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--dim)">— values redacted</span></div><div class="feed">${tail}</div></div>
-    <div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div>
-      <div class="setrow"><button class="btn ghost sm" onclick="archiveSystem('${esc(sid)}')">Archive log</button><button class="link danger" onclick="purgeSystem('${esc(sid)}')">Delete all records…</button></div><div id="sysDanger"></div></div>`);
+      <div class="setrow"><label>Status</label><span class="badge b-info" id="verStatus">checking…</span></div></div>
+    <div class="scard" style="margin-top:12px"><div class="scard-h">Recent activity <span class="sub">(values redacted)</span></div><div class="feed">${tail}</div></div>
+    <div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div><div class="setrow"><button class="btn ghost sm" onclick="archiveSystem('${esc(sid)}')">Archive log</button><button class="link danger" onclick="purgeSystem('${esc(sid)}')">Delete all records…</button></div><div id="sysDanger"></div></div>`);
+  // background chain verify: fills the badge once done, never blocks the modal
+  j("/api/verify?system_id="+encodeURIComponent(sid)).then((ver)=>{ const el=$("verStatus"); if(!el)return; el.className="badge "+(ver.valid?"b-ok":"b-bad"); el.textContent=ver.valid?"Verified ✓":("Problem at #"+ver.first_bad_seq); }).catch(()=>{ const el=$("verStatus"); if(el){ el.className="badge b-info"; el.textContent="check unavailable"; } });
 }
 function redact(t) { return String(t).replace(/"[^"]*"/g,'"•••"').replace(/\b\d[\d,.]{2,}\b/g,"•••"); }
-async function saveSystem(sid){ await post("/api/systems/"+encodeURIComponent(sid),{label:$("sysLabel").value.trim()||null,fm_server:$("sysServer").value.trim()||null,tz_offset:$("sysTz").value===""?null:Number($("sysTz").value),display:$("sysDisp").classList.contains("on")}); $("sysMsg").textContent="Saved."; loadOverview(); }
-async function renameFile(sid,file,name){ await post("/api/databases/rename",{system_id:sid,file_name:file,name:name.trim()||null}); loadOverview(); }
+// Auto-save: fires on every field commit (FileMaker style), flashes a quiet "saved".
+async function saveSystem(sid){ await post("/api/systems/"+encodeURIComponent(sid),{label:$("sysLabel").value.trim()||null,fm_server:$("sysServer").value.trim()||null,tz_offset:$("sysTz").value===""?null:Number($("sysTz").value),display:$("sysDisp").classList.contains("on")}); const m=$("sysMsg"); if(m){ m.textContent="saved ✓"; setTimeout(()=>{ if(m.textContent==="saved ✓") m.textContent=""; },1500); } loadOverviewQuiet(); }
+async function renameFile(sid,file,name){ await post("/api/databases/rename",{system_id:sid,file_name:file,name:name.trim()||null}); loadOverviewQuiet(); }
 async function unlinkFile(sid,file){ if(!confirm("Unlink this database? It goes back to new/unplaced.")) return; await post("/api/databases/unlink",{system_id:sid,file_name:file}); closeModal(); loadOverview(); }
+$("addSystemBtn").onclick = async()=>{ const name=prompt("Name the new system:"); if(!name)return; const sid=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); const r=await adminReq("POST","/v1/admin/keys",{system_id:sid,label:name}); if(r&&r.data){ urlModal(name, location.origin+"/v1/log/"+r.data.key); loadOverview(); } };
 
-// wizard: place unplaced databases
-function wizard(){ const u=ov.unplaced; if(!u||!u.length){loadOverview();return;} placeOne(0); }
-function placeOne(i){
-  const u=ov.unplaced; if(i>=u.length){ closeModal(); loadOverview(); return; }
+// wizard
+function wizard(){ if(!ov.unplaced||!ov.unplaced.length){loadOverview();return;} placeOne(0); }
+function placeOne(i){ const u=ov.unplaced; if(i>=u.length){ closeModal(); loadOverview(); return; }
   const d=u[i]; const others=ov.systems.filter((s)=>s.system_id!==d.system_id);
+  // A file keeps its own hash chain either way. "Own" = its own system card. "Link" =
+  // display it under an existing system (grouping only; the chains stay separate).
+  const existing=(ov.systems.find((s)=>s.system_id===d.system_id)||{}).label; // already renamed? show that
   modal(`New database (${i+1} of ${u.length})`, `
-    <div style="font-size:14px;margin-bottom:12px"><b>${esc(d.file_name)}</b> just started logging (${fmtN(d.entry_count)} entries so far). What is it?</div>
-    <div class="field"><span>Name it</span><input class="input" id="wizName" value="${esc(d.file_name)}"></div>
-    <div class="scard" style="margin-top:6px"><div class="scard-h">Make it its own system</div>
-      <div class="setrow"><button class="btn sm" onclick="wizPlace(${i},'own')">Create system</button><span class="quiet" style="padding:0">Gets its own log &amp; API key.</span></div></div>
-    ${others.length?`<div class="scard" style="margin-top:10px"><div class="scard-h">Or link to an existing system</div>
-      <div class="setrow"><select class="input" id="wizTarget" style="width:auto">${others.map((s)=>`<option value="${esc(s.system_id)}">${esc(s.label||s.system_id)}</option>`).join("")}</select><button class="btn ghost sm" onclick="wizPlace(${i},'link')">Link</button></div></div>`:""}
-    <div class="setrow" style="margin-top:10px"><button class="link" onclick="placeOne(${i+1})">skip for now</button></div>
-    <div id="wizResult"></div>`);
+    <div style="font-size:14px;margin-bottom:12px"><b>${esc(d.file_name)}</b> just started logging (${fmtN(d.entry_count)} entries). What is it?</div>
+    <div class="field"><span>Name</span><input class="input" id="wizName" value="${esc(existing||d.file_name)}"></div>
+    <div class="scard" style="margin-top:6px;background:var(--panel2)"><div class="scard-h">Make it its own system</div><div class="setrow"><button class="btn sm" onclick="wizPlace(${i},'own')">Create system</button><span class="quiet" style="padding:0">Its own card and history.</span></div></div>
+    ${others.length?`<div class="scard" style="margin-top:10px;background:var(--panel2)"><div class="scard-h">Or show it under an existing system</div><div class="setrow"><select class="input" id="wizTarget" style="width:auto">${others.map((s)=>`<option value="${esc(s.system_id)}">${esc(s.label||s.system_id)}</option>`).join("")}</select><button class="btn ghost sm" onclick="wizPlace(${i},'link')">Link</button></div><div class="hint">Groups this file under that system. Their logs stay separate chains.</div></div>`:""}
+    <div class="setrow" style="margin-top:10px"><button class="link" onclick="placeOne(${i+1})">skip for now</button></div><div id="wizResult"></div>`);
 }
-async function wizPlace(i,mode){
-  const d=ov.unplaced[i], name=$("wizName").value.trim()||d.file_name;
+async function wizPlace(i,mode){ const d=ov.unplaced[i], name=$("wizName").value.trim()||d.file_name;
   const body={system_id:d.system_id,file_name:d.file_name,mode,name}; if(mode==="link") body.target=$("wizTarget").value;
-  const r=await post("/api/databases/place",body);
-  if(mode==="own"&&r.url){ $("wizResult").innerHTML=`<div class="keybox">This database now has its own log. Put this URL in its FileMaker script (shown once):<br><br><b>${esc(r.url)}</b></div><div class="setrow" style="margin-top:8px"><button class="btn sm" onclick="ov.unplaced.splice(${i},1);placeOne(${i})">Next</button></div>`; }
-  else { ov.unplaced.splice(i,1); placeOne(i); }
+  // One universal URL already routes this file to its own system by name, so no per-file
+  // key or URL to hand out. "own" just confirms and names it; "link" folds it into another.
+  await post("/api/databases/place",body);
+  ov.unplaced.splice(i,1); placeOne(i);
   loadOverviewQuiet();
 }
-async function loadOverviewQuiet(){ try{ const o=await j("/api/overview"); ov.systems=o.systems; }catch{} }
+async function archiveSystem(sid){ const r=await adminReq("POST","/v1/admin/systems/"+encodeURIComponent(sid)+"/archive",{}); if(r&&r.data) $("sysDanger").innerHTML=`<div class="banner new" style="margin-top:8px;background:var(--goodbg);border-color:var(--good);color:var(--good)">Archived ${r.data.summary.entries} entries.</div>`; loadOverview(); }
+async function purgeSystem(sid){ const s=ov.systems.find((x)=>x.system_id===sid);
+  // An empty system deletes with no hassle; the double-check is only for real records.
+  if((s?.entry_count||0)>0 && !confirm(`Permanently delete ALL ${fmtN(s.entry_count)} records for "${sid}"?`)) return;
+  await adminReq("POST","/v1/admin/systems/"+encodeURIComponent(sid)+"/purge",{confirm:sid});
+  await post("/api/systems/"+encodeURIComponent(sid),{display:false}); // empty shell drops off the board too
+  closeModal(); loadOverview(); }
 
-async function archiveSystem(sid){ const r=await adminReq("POST","/v1/admin/systems/"+encodeURIComponent(sid)+"/archive",{}); if(r&&r.data) $("sysDanger").innerHTML=`<div class="banner" style="margin-top:8px;background:var(--goodbg);border-color:var(--good);color:var(--good)">Archived ${r.data.summary.entries} entries.</div>`; loadOverview(); }
-async function purgeSystem(sid){ if(!confirm(`Permanently delete ALL records for "${sid}"? Archive first if you want them kept.`)) return; await adminReq("POST","/v1/admin/systems/"+encodeURIComponent(sid)+"/purge",{confirm:sid}); closeModal(); loadOverview(); }
-$("addSystemBtn").onclick = () => addSystem();
-async function addSystem(){
-  const name=prompt("Name the new system:"); if(!name) return;
-  const sid=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
-  const r=await adminReq("POST","/v1/admin/keys",{system_id:sid,label:name});
-  if(r&&r.data){ const url=location.origin+"/v1/log/"+r.data.key; modal(esc(name),`<div class="keybox">Put this URL in the FileMaker script (shown once):<br><br><b>${esc(url)}</b></div>`); loadOverview(); }
-}
-
-// admin only for destructive/key ops; prompt for install password just-in-time
+// admin (destructive only)
 const adminTok = () => sessionStorage.getItem("clio_admin") || "";
-async function adminReq(method, path, body){
-  if(!adminTok()){ const t=prompt("Admin password (only needed for creating keys or deleting):"); if(!t) return null; sessionStorage.setItem("clio_admin",t.trim()); }
+async function adminReq(method, path, body){ if(!adminTok()){ const t=prompt("Admin password (only needed to create keys or delete):"); if(!t) return null; sessionStorage.setItem("clio_admin",t.trim()); }
   const r=await fetch(api(path),{method,headers:{Authorization:"Bearer "+adminTok(),"content-type":"application/json"},body:body!==undefined?JSON.stringify(body):undefined});
-  if(r.status===401){ sessionStorage.removeItem("clio_admin"); alert("That password was not accepted."); return null; }
-  return r.json();
+  if(r.status===401){ sessionStorage.removeItem("clio_admin"); alert("That password was not accepted."); return null; } return r.json();
 }
 
-// modal helper
-function modal(title, html){ let o=$("adhoc"); if(!o){o=document.createElement("div");o.id="adhoc";o.className="overlay";document.body.appendChild(o);} o.innerHTML=`<div class="panel"><div class="p-head"><span class="ttl">${title}</span><button class="x" onclick="closeModal()">✕</button></div><div class="p-list">${html}</div></div>`; o.classList.add("open"); o.onclick=(e)=>{if(e.target===o)closeModal();}; }
+// modal + url helpers
+function modal(title, html){ let o=$("adhoc"); if(!o){o=document.createElement("div");o.id="adhoc";o.className="overlay";document.body.appendChild(o);} o.innerHTML=`<div class="panel auto"><div class="p-head"><span class="ttl">${esc(title)}</span><button class="x" onclick="closeModal()">✕</button></div><div class="p-list">${html}</div></div>`; o.classList.add("open"); o.onclick=null; bindCopy(); }
 function closeModal(){ $("adhoc")?.classList.remove("open"); }
+function urlBox(url){ return `<div class="urlbox"><span class="u">${esc(url)}</span><button class="copybtn" data-copy="${esc(url)}" title="Copy">⧉</button></div>`; }
+function urlModal(title, url){ modal(title, `<div class="hint">Put this URL in the FileMaker script (shown once):</div>${urlBox(url)}`); }
+function bindCopy(){ document.querySelectorAll("[data-copy]").forEach((b)=>{ if(b._c)return; b._c=1; b.onclick=()=>copyText(b.dataset.copy,b); }); }
 
 // ---- Ask ----
 const askMessages=[];
@@ -374,100 +412,203 @@ function renderThread(){ $("thread").innerHTML=askMessages.map((m)=>m.role==="us
 async function askSend(){ const q=$("askInput").value.trim(); if(!q)return; $("askInput").value=""; askMessages.push({role:"user",content:q}); renderThread(); $("thread").insertAdjacentHTML("beforeend",`<div class="msg meta" id="thinking">reading the logs…</div>`); const r=await post("/api/ask",{messages:askMessages.map((m)=>({role:m.role,content:m.content}))}); $("thinking")?.remove(); askMessages.push({role:"assistant",content:r.error?("Something went wrong: "+r.error):(r.reply||"…"),artifacts:r.artifacts||[]}); renderThread(); }
 $("askBtn").onclick=askSend; $("askInput").onkeydown=(e)=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askSend();}};
 async function pollPulse(){ try{ const p=await j("/api/pulse"); if(p.summary){ $("pulseText").textContent=p.summary; $("pulseMeta").textContent=`${p.stats.events_last_24h} events / 24h · ${p.stats.open_warnings} open`; } }catch{} }
-// Rejected posts (bad API key, bad body) are surfaced, never silent.
-async function pollRejects(){ try{ const {rejects}=await j("/api/rejects"); if(!rejects||!rejects.length){ $("rejectBanner").innerHTML=""; return; }
-  const recent=rejects.slice(0,4).map((r)=>`<div style="font-size:12px">${localTime(r.ts)} · <b>${esc(r.code)}</b> · ${esc(r.message||"")}</div>`).join("");
-  $("rejectBanner").innerHTML=`<div class="banner" style="background:var(--critbg);border-color:var(--critc);color:var(--critc);flex-direction:column;align-items:flex-start;gap:4px"><div><b>${rejects.length} rejected post${rejects.length===1?"":"s"}</b> — something tried to log but was refused (usually a wrong API key or a bad URL):</div>${recent}</div>`; }catch{} }
+async function pollRejects(){ try{ const {rejects}=await j("/api/rejects"); if(!rejects||!rejects.length){ $("rejectBanner").innerHTML=""; return; } const recent=rejects.slice(0,4).map((r)=>`<div style="font-size:12px">${localTime(r.ts)} · <b>${esc(r.code)}</b> · ${esc(r.message||"")}</div>`).join(""); $("rejectBanner").innerHTML=`<div class="banner bad"><div style="display:flex;align-items:center;width:100%;gap:10px"><b>${rejects.length} rejected post${rejects.length===1?"":"s"}</b>, refused (usually a wrong API key or URL)<button class="btn ghost sm" style="margin-left:auto" onclick="ackRejects()">Acknowledge</button></div>${recent}</div>`; }catch{} }
+async function ackRejects(){ $("rejectBanner").innerHTML=""; await post("/api/rejects/ack",{}); pollRejects(); }
 
-// ---- Live feed (SSE-driven) ----
+// ---- Log Entries: one table. A live tail at rest; an investigation on touch. ----
 let latestTs=null; const seen=new Set(); const feedRows={};
-function rowHtml(e,fresh){ let p={};try{p=JSON.parse(e.payload_json);}catch{} const c=crud(e.action,p),h=humanLine(e); const key=e.system_id+"#"+e.seq; feedRows[key]=e; const sysName=(ov.systems.find((s)=>s.system_id===e.system_id)||{}).label||e.system_id;
-  return `<div class="row ${fresh?"fresh":""}" data-sys="${esc(e.system_id)}" onclick="openEntry('${esc(key)}')" style="cursor:pointer"><span class="t">${localHM(e.ts_server)}</span><span class="tag ${c.cls}">${c.tag}</span><span class="sys">${esc(sysName)}</span><span class="main">${h.who?esc(h.who)+" ":""}<span class="did">${esc(h.text)}</span></span></div>`; }
-function applyFeedFilters(){ const q=$("feedFilter").value.trim().toLowerCase(),sys=$("feedSystem").value; document.querySelectorAll("#feed .row").forEach((r)=>{ const hit=(!q||r.textContent.toLowerCase().includes(q))&&(!sys||r.dataset.sys===sys); r.style.display=hit?"":"none"; }); }
-["feedFilter","feedSystem"].forEach((id)=>$(id).oninput=applyFeedFilters);
-async function pollFeed(){ try{ const r=await j("/api/logs?limit=60"+(latestTs?"&since="+encodeURIComponent(latestTs):"")); if(r.entries&&r.entries.length){ if(latestTs===null)$("feed").innerHTML=""; const html=r.entries.map((e)=>{const k=e.system_id+"#"+e.seq; if(seen.has(k))return""; seen.add(k); return rowHtml(e,latestTs!==null);}).join(""); $("feed").insertAdjacentHTML("afterbegin",html); latestTs=r.latest_ts||latestTs; const rows=document.querySelectorAll("#feed .row"); for(let i=300;i<rows.length;i++)rows[i].remove(); applyFeedFilters(); } $("feedStatus").textContent="live"; }catch{ $("feedStatus").textContent="reconnecting…"; } }
-function openEntry(key){ const e=feedRows[key]; if(!e)return; let p={};try{p=JSON.parse(e.payload_json);}catch{}
+let logList=[], logQ="", logPending=[], logOffset=0, logSort={key:"time",dir:"desc"};
+let logSystems=[], logPerson="", logWhen="";
+const freshKeys=new Set();
+function toggleMs(id){ const m=$(id); document.querySelectorAll(".ms.open").forEach(x=>{if(x!==m)x.classList.remove("open");}); m.classList.toggle("open"); }
+document.addEventListener("click",(e)=>{ if(!e.target.closest(".ms")) document.querySelectorAll(".ms.open").forEach(m=>m.classList.remove("open")); });
+function buildLogFilters(){
+  const sysOpts=[...ov.systems.map((s)=>({id:s.system_id,label:s.label||s.system_id})),{id:"clio",label:"Clio (internal)"}];
+  $("lgSysPop").innerHTML=sysOpts.map((s)=>`<label><input type="checkbox" value="${esc(s.id)}" ${logSystems.includes(s.id)?"checked":""} onchange="pickLogSys()"> ${esc(s.label)}</label>`).join("");
+}
+function pickLogSys(){ logSystems=[...$("lgSysPop").querySelectorAll("input:checked")].map(x=>x.value);
+  $("lgSysMs").querySelector(".msbtn").textContent=logSystems.length?`${logSystems.length} system${logSystems.length>1?"s":""}`:"All systems"; loadLog(); }
+async function loadActors(){ try{ const {actors}=await j("/api/actors");
+  if(actors.length>100){ $("lgPersonWrap").innerHTML=`<input class="input" id="lgPerson" list="lgPeople" placeholder="Anyone" style="width:150px"><datalist id="lgPeople">${actors.map((a)=>`<option value="${esc(a.who)}">`).join("")}</datalist>`; }
+  else $("lgPerson").innerHTML='<option value="">Anyone</option>'+actors.map((a)=>`<option>${esc(a.who)}</option>`).join("");
+  $("lgPerson").onchange=()=>{ logPerson=$("lgPerson").value.trim(); loadLog(); };
+}catch{} }
+function logRange(){ const now=new Date(), day=(d)=>new Date(now.getFullYear(),now.getMonth(),now.getDate()-d);
+  if(logWhen==="today")return{from:day(0)};
+  if(logWhen==="yesterday")return{from:day(1),to:day(0)};
+  if(logWhen==="week")return{from:day(7)};
+  if(logWhen==="lastweek")return{from:day(14),to:day(7)};
+  if(logWhen==="month")return{from:new Date(now.getFullYear(),now.getMonth(),1)};
+  if(logWhen==="range")return{from:$("lgFrom").value?new Date($("lgFrom").value):null,to:$("lgTo").value?new Date($("lgTo").value):null};
+  return{};
+}
+function logParams(extra){ const p=new URLSearchParams(extra||{});
+  if(logQ)p.set("q",logQ); if(logSystems.length)p.set("systems",logSystems.join(","));
+  if(logPerson)p.set("person",logPerson);
+  const {from,to}=logRange(); if(from)p.set("from",from.toISOString()); if(to)p.set("to",to.toISOString());
+  return p.toString();
+}
+const LOGCOLS=[{key:"date",label:"Date",w:96},{key:"time",label:"Time",w:84},{key:"type",label:"Type",w:80},{key:"person",label:"Person",w:130},{key:"system",label:"System",w:130},{key:"action",label:"Action",w:0}];
+const colW=(()=>{ try{ return JSON.parse(localStorage.clio_logcols||"{}"); }catch{ return {}; } })();
+function localDate(iso){ const d=new Date(iso); return isNaN(d)?"":d.toLocaleDateString([], {month:"short",day:"numeric",...(d.getFullYear()===new Date().getFullYear()?{}:{year:"numeric"})}); }
+function logFields(e){ if(e._f)return e._f; let p={};try{p=JSON.parse(e.payload_json);}catch{}
+  const h=humanLine(e), ts=e.ts_client||e.ts_server;
+  return e._f={ ts, date:localDate(ts), time:localHM(ts), type:crud(e.action,p), person:h.who||"", system:sysName(e.system_id), action:h.text };
+}
+function sortVal(e,k){ const f=logFields(e);
+  if(k==="date"||k==="time")return f.ts||"";
+  if(k==="type")return f.type.tag;
+  return String(f[k]||"").toLowerCase();
+}
+function buildLogHead(){
+  $("logHead").innerHTML=LOGCOLS.map((c)=>{ const w=colW[c.key]||c.w;
+    const arr=logSort.key===c.key?`<span class="arr">${logSort.dir==="desc"?"▼":"▲"}</span>`:"";
+    return `<th data-k="${c.key}" ${w?`style="width:${w}px"`:""}>${c.label}${arr}<span class="grip" data-k="${c.key}"></span></th>`; }).join("");
+  $("logHead").querySelectorAll("th").forEach((th)=>{ th.onclick=(ev)=>{ if(ev.target.classList.contains("grip"))return;
+    const k=th.dataset.k; const timeKey=(k==="date"||k==="time");
+    if(logSort.key===k||(timeKey&&(logSort.key==="date"||logSort.key==="time"))){ logSort={key:k,dir:logSort.dir==="desc"?"asc":"desc"}; }
+    else logSort={key:k,dir:timeKey?"desc":"asc"};
+    renderLog(); }; });
+  $("logHead").querySelectorAll(".grip").forEach((g)=>{ g.onmousedown=(ev)=>{ ev.preventDefault(); ev.stopPropagation();
+    const k=g.dataset.k, th=g.parentElement, startX=ev.clientX, startW=th.offsetWidth; g.classList.add("dragging");
+    const move=(m)=>{ const w=Math.max(48,startW+(m.clientX-startX)); th.style.width=w+"px"; colW[k]=w; };
+    const up=()=>{ document.removeEventListener("mousemove",move); document.removeEventListener("mouseup",up); g.classList.remove("dragging"); localStorage.clio_logcols=JSON.stringify(colW); };
+    document.addEventListener("mousemove",move); document.addEventListener("mouseup",up); }; });
+}
+function logRowHtml(e){ const f=logFields(e); const key=e.system_id+"#"+e.seq; feedRows[key]=e;
+  return `<tr class="${freshKeys.has(key)?"fresh":""}" onclick="openEntry('${esc(key)}')"><td class="num">${esc(f.date)}</td><td class="num">${esc(f.time)}</td><td><span class="tag ${f.type.cls}">${f.type.tag}</span></td><td title="${esc(f.person)}">${esc(f.person)}</td><td title="${esc(f.system)}">${esc(f.system)}</td><td title="${esc(f.action)}">${esc(f.person&&f.action?f.action:f.action||friendlyAction(e.action))}</td></tr>`; }
+function renderLog(){ if(!$("logBody"))return;
+  buildLogHead();
+  const dir=logSort.dir==="asc"?1:-1;
+  const arr=[...logList].sort((a,b)=>{ const x=sortVal(a,logSort.key),y=sortVal(b,logSort.key); return x<y?-dir:x>y?dir:(a.seq-b.seq)*dir; });
+  $("logBody").innerHTML=arr.length?arr.map(logRowHtml).join(""):`<tr><td colspan="6" class="quiet">${logQ?"No matches.":"Waiting for entries…"}</td></tr>`;
+  $("logCount").textContent=logQ?`${logList.length} match${logList.length===1?"":"es"}`:"";
+  $("logMore").style.display=logList.length&&logList.length%200===0?"":"none";
+  if(freshKeys.size)setTimeout(()=>freshKeys.clear(),1000);
+}
+async function loadLog(){ logOffset=0;
+  const r=await j("/api/logs?"+logParams({limit:200}));
+  logList=r.entries||[]; logList.forEach((e)=>seen.add(e.system_id+"#"+e.seq));
+  if(!logQ&&!logPerson&&!logWhen&&!logSystems.length){ latestTs=r.latest_ts||latestTs; }
+  logPending=[]; $("logNewPill").style.display="none"; renderLog(); }
+async function logLoadMore(){ logOffset+=200;
+  const r=await j("/api/logs?"+logParams({limit:200,offset:logOffset}));
+  for(const e of (r.entries||[])){ const k=e.system_id+"#"+e.seq; if(seen.has(k)&&!logQ)continue; seen.add(k); logList.push(e); }
+  renderLog(); }
+$("logMore").onclick=logLoadMore;
+$("lgWhen").onchange=()=>{ logWhen=$("lgWhen").value; $("lgRange").style.display=logWhen==="range"?"flex":"none"; if(logWhen!=="range")loadLog(); };
+["lgFrom","lgTo"].forEach((id)=>$(id).onchange=()=>loadLog());
+let searchTimer=null;
+$("logSearch").oninput=()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>{ const v=$("logSearch").value.trim();
+  if(v===logQ)return; logQ=v; loadLog(); },250); };
+$("logSearch").onkeydown=(e)=>{ if(e.key==="Escape"&&$("logSearch").value){ e.stopPropagation(); $("logSearch").value=""; logQ=""; loadLog(); } };
+$("logNewPill").onclick=()=>{ for(const e of logPending){ logList.unshift(e); freshKeys.add(e.system_id+"#"+e.seq); } logPending=[]; $("logNewPill").style.display="none"; if(logList.length>500)logList.length=500; renderLog(); };
+async function pollLog(){ try{
+  // New arrivals respect the active filters (server-side), so a filtered tail stays live.
+  const r=await j("/api/logs?"+logParams({limit:60,...(latestTs?{since:latestTs}:{})}));
+  const fresh=[]; for(const e of (r.entries||[])){ const k=e.system_id+"#"+e.seq; if(seen.has(k))continue; seen.add(k); fresh.push(e); }
+  if(fresh.length){ latestTs=r.latest_ts||latestTs;
+    const atRest=!logQ&&(logSort.key==="time"||logSort.key==="date")&&logSort.dir==="desc";
+    if(atRest){ for(const e of fresh.reverse()){ logList.unshift(e); freshKeys.add(e.system_id+"#"+e.seq); } if(logList.length>500)logList.length=500; renderLog(); }
+    else{ logPending.push(...fresh); const p=$("logNewPill"); p.textContent=`${logPending.length} new entr${logPending.length===1?"y":"ies"}`; p.style.display=""; } }
+  $("logStatus").textContent="live"; }catch{ $("logStatus").textContent="reconnecting…"; } }
+function showEntryDetail(e){ let p={};try{p=JSON.parse(e.payload_json);}catch{}
   const flat={}; const walk=(o,pre="")=>{for(const[k,v]of Object.entries(o||{})){if(v&&typeof v==="object"&&!Array.isArray(v))walk(v,pre+k+" · ");else flat[pre+k]=v;}}; walk(p);
   const rows=Object.entries(flat).filter(([k])=>!/^changed/.test(k)).map(([k,v])=>`<div class="kk">${esc(k)}</div><div class="kvv">${esc(String(v))}</div>`).join("");
-  const changed=p.changed?`<div class="chart-h" style="margin-top:12px">What changed</div><div class="kv">${Object.entries(p.changed).filter(([f])=>!/^z_/.test(f)).map(([f,v])=>`<div class="kk">${esc(f)}</div><div class="kvv">${esc(String(v.from))} → ${esc(String(v.to))}</div>`).join("")}</div>`:"";
-  const histBtn=(p.table&&p.record_id!=null)?`<button class="btn ghost sm" onclick="closeModal();recordHistory('${esc(e.system_id)}','${esc(p.table)}',${p.record_id})">↺ Record history</button> `:"";
-  modal(friendlyAction(e.action),`<div style="color:var(--muted);font-size:12.5px;margin-bottom:10px">${esc((ov.systems.find((s)=>s.system_id===e.system_id)||{}).label||e.system_id)} · ${esc(localTime(e.ts_server))}</div>${changed}<div class="chart-h" style="margin-top:12px">Details</div><div class="kv">${rows||'<div class="kvv">No payload.</div>'}</div><div style="margin-top:14px">${histBtn}<button class="btn ghost sm" onclick="var b=this.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none'">Show raw JSON</button><div class="rawbox" style="display:none">${esc(JSON.stringify(p,null,2))}</div></div>`); }
+  const changedRows=p.changed?Object.entries(p.changed).filter(([f])=>!isHousekeepingF(f)):[];
+  const changed=changedRows.length?`<div class="chart-h" style="margin-top:12px">What changed</div><div class="kv">${changedRows.map(([f,v])=>`<div class="kk">${esc(f)}</div><div class="kvv">${esc(clampVal(v.from))} → ${esc(clampVal(v.to))}</div>`).join("")}</div>`:"";
+  const histBtn=(p.table&&p.record_id!=null)?`<button class="btn ghost sm" onclick="closeModal();recordHistory('${esc(e.system_id)}','${esc(p.table)}',${p.record_id})">↺ This record's history</button> `:"";
+  modal(friendlyAction(e.action),`<div style="color:var(--muted);font-size:12.5px;margin-bottom:10px">${esc(sysName(e.system_id))} · ${esc(localTime(e.ts_server||e.ts))}</div>${changed}<div class="chart-h" style="margin-top:12px">Details</div><div class="kv">${rows||'<div class="kvv">No payload.</div>'}</div><div style="margin-top:14px">${histBtn}<button class="btn ghost sm" onclick="var b=this.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none'">Show raw JSON</button><div class="rawbox" style="display:none">${esc(JSON.stringify(p,null,2))}</div></div>`); }
+function openEntry(key){ const e=feedRows[key]; if(e) showEntryDetail(e); }
+async function openHistoryEntry(sid,seq){ if(!sid||seq==null)return; const {entry}=await j("/api/entry?system_id="+encodeURIComponent(sid)+"&seq="+seq); if(entry) showEntryDetail(entry); else modal("Entry",'<div class="quiet">Could not load this entry.</div>'); }
 
-// ---- History (read-time, filters) ----
-const HIST_ACTIONS=[["","All"],["create","Create"],["update","Update"],["delete","Delete"],["read","View"],["login","Login"],["export","Export"]];
-let histAction="", histRecord=null;
-function renderHistFilters(){ $("hActions").innerHTML=HIST_ACTIONS.map(([v,l])=>`<span class="chip ${histAction===v?"on":""}" onclick="histAction='${v}';renderHistFilters();runHistory()">${l}</span>`).join(""); }
-$("hWhen").onchange=()=>{ $("hRange").style.display=$("hWhen").value==="range"?"flex":"none"; if($("hWhen").value!=="range")runHistory(); };
-["hFrom","hTo"].forEach((id)=>$(id).onchange=()=>runHistory());
-$("hSystems").onchange=()=>runHistory();
-function whenRange(){ const w=$("hWhen").value, now=new Date(); let since;
-  if(w==="today"){since=new Date(now.getFullYear(),now.getMonth(),now.getDate());}
-  else if(w==="yesterday"){since=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);}
-  else if(w==="week"){since=new Date(now-7*864e5);}
-  else if(w==="month"){since=new Date(now.getFullYear(),now.getMonth(),1);}
-  else if(w==="range"){ return { since:$("hFrom").value?new Date($("hFrom").value).toISOString():null, until:$("hTo").value?new Date($("hTo").value).toISOString():null }; }
-  return { since:since?since.toISOString():null, until:null };
+// Record history: every logged change to one record, from and to, in a modal.
+async function recordHistory(system,table,record_id){
+  const d=await j("/api/history?"+new URLSearchParams({system_id:system,table,record_id}).toString());
+  const rows=d.items.length?d.items.map((it)=>{
+    const lines=(it.changes||[]).map((c)=>`<div><b>${esc(c.field)}</b>: <span style="color:var(--muted)">${esc(clampVal(c.from))}</span> → ${esc(clampVal(c.to))}</div>`).join("")||`<div class="quiet" style="padding:0">${esc(friendlyAction(it.action))}</div>`;
+    return `<div class="row" onclick="openHistoryEntry('${esc(it.system_id||system)}',${it.seq})" style="align-items:flex-start;cursor:pointer;box-shadow:none"><span class="t" style="width:100px">${esc(localTime(it.ts))}</span><span class="sys">${esc(it.who||"")}</span><div class="main" style="white-space:normal">${lines}</div></div>`;
+  }).join(""):'<div class="quiet">No logged changes for this record.</div>';
+  modal(`${table} #${record_id}: history`, `<div class="feed">${rows}</div>`);
 }
-async function runHistory(){
-  const sysSel=[...$("hSystems").selectedOptions].map((o)=>o.value); const sys=sysSel.length?sysSel:(ov.systems.map((s)=>s.system_id));
-  const {since,until}=whenRange();
-  const base={ system_id:sys[0]||"", ...(histAction?{action_type:histAction}:{}), ...(since?{since}:{}), ...(until?{until}:{}) };
-  if(histRecord){ base.table=histRecord.table; base.record_id=histRecord.record_id; base.system_id=histRecord.system; }
-  $("hStatus").textContent="…";
-  const d=await j("/api/history?"+new URLSearchParams(base).toString());
-  $("history").innerHTML=d.items.length?`<div class="feed">${d.items.map(histRow).join("")}</div>`:'<div class="quiet">No matching changes.</div>';
-  $("hStatus").textContent=`${d.count} ${d.mode==="record"?"changes":"results"}`+(histRecord?` · <a href="#" onclick="histRecord=null;runHistory();return false" style="color:var(--accent2)">clear record</a>`:"");
+
+// ---- Rules ----
+async function loadRules(){ const {rules}=await j("/api/rules");
+  $("rulesList").innerHTML=rules.length?rules.map((r)=>`<div class="warning click" onclick="openRule('${r.id}')"><span class="toggle ${r.enabled?"on":""}" onclick="event.stopPropagation();toggleRule('${r.id}',${r.enabled?0:1})"><span class="knob"></span></span><div class="body"><div class="title">${esc(r.name)} <span class="badge b-${esc(r.severity)}">${esc(r.severity)}</span> ${r.class?`<span class="badge b-hipaa">${esc(r.class)}</span>`:""}</div><div class="detail">${esc(r.description)}</div><div class="src">fired ${r.would_fire_30d??"–"}× in 30 days</div></div></div>`).join(""):'<div class="quiet">No rules yet. Click "New rule".</div>'; }
+async function toggleRule(id,on){ await j("/api/rules/"+id,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({enabled:!!on})}); loadRules(); }
+async function delRule(id){ if(!confirm("Delete this rule?"))return; await j("/api/rules/"+id,{method:"DELETE"}); closeModal(); loadRules(); }
+async function openRule(id){ const [{rules},{firings}]=await Promise.all([j("/api/rules"),j("/api/rules/"+id+"/firings")]); const r=rules.find(x=>x.id===id); if(!r)return;
+  const fire = firings.length? firings.map((f)=>`<div class="warning" style="box-shadow:none"><span class="badge b-${esc(f.severity)}">${esc(f.severity)}</span><div class="body"><div class="detail">${esc(f.detail)}</div><div class="src">${esc(f.system_id)} · ${esc(localTime(f.created_at))}</div></div></div>`).join("") : '<div class="quiet">Not fired yet.</div>';
+  modal(r.name,`
+    <div class="scard"><div class="scard-h">Rule</div>
+      <div class="field"><span>Name</span><input class="input" id="erName" value="${esc(r.name)}"></div>
+      <div class="field"><span>Description</span><textarea class="input" id="erDesc" rows="2">${esc(r.description)}</textarea></div>
+      <div class="frow"><div class="field"><span>Severity</span><select class="input" id="erSev">${["info","warn","critical"].map(s=>`<option ${r.severity===s?"selected":""}>${s}</option>`).join("")}</select></div><div class="field"><span>Class (optional)</span><input class="input" id="erClass" value="${esc(r.class||"")}" placeholder="e.g. HIPAA"></div></div>
+      <div class="setrow"><button class="btn sm" onclick="saveRule('${id}')">Save</button><button class="btn ghost sm" onclick="closeModal()">Cancel</button><button class="link danger" style="margin-left:auto" onclick="delRule('${id}')">delete rule</button><span class="quiet" id="erMsg" style="padding:0"></span></div></div>
+    <div class="scard" style="margin-top:12px"><div class="scard-h">Triggered <span class="sub">${firings.length} time${firings.length===1?"":"s"}</span></div>${fire}</div>`);
 }
-function histRow(it){ const when=localTime(it.ts);
-  if(it.changes){ const lines=it.changes.map((c)=>`<div><b>${esc(c.field)}</b>: <span style="color:var(--muted)">${esc(String(c.from))}</span> → ${esc(String(c.to))}</div>`).join("")||`<div class="quiet" style="padding:0">${esc(friendlyAction(it.action))}</div>`;
-    return `<div class="row" style="align-items:flex-start"><span class="t" style="width:80px">${esc(when)}</span><span class="sys">${esc(it.who||"")}</span><div class="main" style="white-space:normal">${lines}</div></div>`; }
-  const c=crud(it.action,{}); return `<div class="row" onclick="recordHistory('${esc($("hSystems").value||ov.systems[0]?.system_id)}','${esc(it.table||"")}',${it.record_id})" style="cursor:pointer"><span class="t" style="width:80px">${esc(when)}</span><span class="tag ${c.cls}">${c.tag}</span><span class="sys">${esc(it.who||"")}</span><span class="main">${esc(it.table||"")} #${it.record_id??"?"} <span class="did">${esc(it.fields?it.fields.join(", "):it.message||friendlyAction(it.action))}</span></span></div>`; }
-function recordHistory(system,table,record_id){ histRecord={system,table,record_id}; go("history"); }
+async function saveRule(id){ const r=await(await fetch(api("/api/rules/"+id),{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({name:$("erName").value.trim(),description:$("erDesc").value.trim(),severity:$("erSev").value,class:$("erClass").value.trim()||null})})).json(); $("erMsg").textContent="Saved."; loadRules(); }
 
-// ---- warnings ----
-async function loadWarnings(){ const w=await j("/api/warnings"); const cnt=$("warnCnt"); cnt.style.display=w.warnings.length?"":"none"; cnt.textContent=w.warnings.length;
-  $("warnings").innerHTML=w.warnings.length?w.warnings.map((x)=>`<div class="warning"><span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span><div class="body"><div class="title">${esc(x.title)} ${x.class?`<span class="badge b-hipaa">${esc(x.class)}</span>`:""}</div><div class="detail">${esc(x.detail)}</div></div><button class="btn ghost sm" onclick="ackW('${esc(x.id)}')">Acknowledge</button></div>`).join(""):'<div class="quiet">No open warnings. Quiet is good.</div>'; }
-async function ackW(id){ await post("/api/warnings/"+id+"/ack"); loadWarnings(); loadOverview(); }
-$("viewActions").innerHTML=`<button class="btn ghost sm" id="scanBtn">Scan now</button>`;
-$("scanBtn").onclick=async()=>{ $("scanBtn").textContent="Scanning…"; await post("/api/scan",{force:true}); $("scanBtn").textContent="Scan now"; loadWarnings(); };
-
-// ---- settings ----
-$("settingsBtn").onclick=()=>{ $("settings").classList.add("open"); loadChannels(); loadAI(); loadRules(); };
-$("setClose").onclick=()=>$("settings").classList.remove("open");
-$("settings").onclick=(e)=>{if(e.target===$("settings"))$("settings").classList.remove("open");};
-$("setTabs").querySelectorAll("button").forEach((b)=>b.onclick=()=>{ $("setTabs").querySelectorAll("button").forEach((x)=>x.classList.toggle("on",x===b)); ["rules","channels","ai","about"].forEach((t)=>$("tab-"+t).style.display=t===b.dataset.t?"":"none"); });
-async function loadChannels(){ const p=await j("/api/prefs"); $("chSlack").value=p.slack_webhook||""; $("chWebhook").value=p.alert_webhook||""; }
-$("chSave").onclick=async()=>{ await post("/api/prefs",{slack_webhook:$("chSlack").value.trim(),alert_webhook:$("chWebhook").value.trim()}); $("chStatus").textContent="Saved."; setTimeout(()=>$("chStatus").textContent="",2000); };
-$("chTest").onclick=async()=>{ $("chStatus").textContent="Sending…"; const r=await post("/api/notify-test"); $("chStatus").textContent=`Slack ${r.sent?.slack?"✓":"—"} · webhook ${r.sent?.webhook?"✓":"—"}`; };
-async function loadAI(){ const a=await j("/api/ai"); $("aiModel").innerHTML=a.models.map((m)=>`<option value="${esc(m.id)}" ${m.id===a.model?"selected":""}>${esc(m.label)}${m.legacy?" (previous)":""}</option>`).join(""); $("aiState").textContent=a.available?(a.fallback?"Showing a built-in list (couldn't reach Anthropic).":"Live model list from Anthropic."):"No AI key set. Set ANTHROPIC_API_KEY as a secret."; }
-$("aiModel").onchange=async()=>{ await post("/api/ai",{model:$("aiModel").value}); };
-
-// rules
+// rule creation modal: shows the created rule after save
 let ruleMessages=[],pendingDraft=null;
 function renderRuleThread(){ $("ruleThread").innerHTML=ruleMessages.map((m)=>m.role==="user"?`<div class="msg user" style="max-width:100%">${esc(m.content)}</div>`:`<div class="msg bot" style="max-width:100%">${renderMd(m.content)}</div>`).join(""); $("ruleThread").lastElementChild?.scrollIntoView({block:"end"}); }
-$("newRuleBtn").onclick=()=>{ ruleMessages=[];pendingDraft=null;$("ruleDraft").innerHTML="";$("ruleInput").value="";renderRuleThread(); $("ruleModal").classList.add("open"); setTimeout(()=>$("ruleInput").focus(),50); };
-$("ruleModalClose").onclick=()=>$("ruleModal").classList.remove("open");
-$("ruleModal").onclick=(e)=>{if(e.target===$("ruleModal"))$("ruleModal").classList.remove("open");};
+function openRuleModal(){ ruleMessages=[];pendingDraft=null;$("ruleDraft").innerHTML="";$("ruleInput").value="";$("ruleAskRow").style.display="flex";$("ruleModalTitle").textContent="New rule";renderRuleThread(); $("ruleModal").classList.add("open"); setTimeout(()=>$("ruleInput").focus(),50); }
+$("ruleModalClose").onclick=()=>{$("ruleModal").classList.remove("open");loadRules();};
+// no backdrop-close: editing modals close only via ✕ or Escape (avoids losing work on a stray click)
 async function ruleAsk(){ const q=$("ruleInput").value.trim(); if(!q)return; $("ruleInput").value="";ruleMessages.push({role:"user",content:q});renderRuleThread(); const r=await post("/api/rules/author",{messages:ruleMessages}); if(r.error){ruleMessages.push({role:"assistant",content:"Error: "+r.error});renderRuleThread();return;} ruleMessages.push({role:"assistant",content:r.reply||"…"});renderRuleThread(); if(r.draft)showDraft(r.draft,r.preview); }
 $("ruleAsk").onclick=ruleAsk; $("ruleInput").onkeydown=(e)=>{if(e.key==="Enter")ruleAsk();};
 function showDraft(draft,preview){ pendingDraft=draft; const fired=preview?`Would have fired <b>${preview.would_fire}</b> time${preview.would_fire===1?"":"s"} in the last ${preview.days} days.`:"";
   $("ruleDraft").innerHTML=`<div class="scard" style="margin-top:12px;border-color:var(--accent2)"><div class="scard-h">Proposed rule</div><div style="font-weight:600">${esc(draft.name)} <span class="badge b-${esc(draft.severity)}">${esc(draft.severity)}</span> ${draft.class?`<span class="badge b-hipaa">${esc(draft.class)}</span>`:""}</div><div style="font-size:13px;color:var(--muted);margin:4px 0 8px">${esc(draft.description)}</div><div class="hint">${fired}</div><div class="setrow" style="margin-top:10px"><button class="btn" id="ruleSaveBtn">Save</button><button class="btn ghost" id="ruleCancelBtn">Cancel</button></div></div>`;
-  $("ruleCancelBtn").onclick=()=>$("ruleModal").classList.remove("open");
-  $("ruleSaveBtn").onclick=async()=>{ await post("/api/rules",pendingDraft); ruleMessages=[];pendingDraft=null;$("ruleDraft").innerHTML="";renderRuleThread(); loadRules(); $("ruleThread").innerHTML='<div class="msg meta">Saved. Describe another, or close.</div>'; }; }
-async function loadRules(){ const {rules}=await j("/api/rules"); $("rulesList").innerHTML=rules.length?rules.map((r)=>`<div class="warning"><span class="toggle ${r.enabled?"on":""}" onclick="toggleRule('${r.id}',${r.enabled?0:1})"><span class="knob"></span></span><div class="body"><div class="title">${esc(r.name)} <span class="badge b-${esc(r.severity)}">${esc(r.severity)}</span> ${r.class?`<span class="badge b-hipaa">${esc(r.class)}</span>`:""}</div><div class="detail">${esc(r.description)}</div><div class="src">fired ${r.would_fire_30d??"—"}× in 30 days</div></div><button class="link danger" onclick="delRule('${r.id}')">delete</button></div>`).join(""):'<div class="quiet">No rules yet. Click "New rule".</div>'; }
-async function toggleRule(id,on){ await j("/api/rules/"+id,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({enabled:!!on})}); loadRules(); }
-async function delRule(id){ await j("/api/rules/"+id,{method:"DELETE"}); loadRules(); }
+  $("ruleCancelBtn").onclick=()=>{$("ruleModal").classList.remove("open");loadRules();};
+  $("ruleSaveBtn").onclick=async()=>{ const res=await post("/api/rules",pendingDraft); const saved=res.name?res:pendingDraft;
+    // show the actual saved rule, never "describe another"
+    $("ruleAskRow").style.display="none"; $("ruleThread").innerHTML=""; $("ruleModalTitle").textContent="Rule created";
+    $("ruleDraft").innerHTML=`<div class="scard" style="border-color:var(--good)"><div class="scard-h" style="color:var(--good)">✓ Saved</div><div style="font-weight:600">${esc(saved.name)} <span class="badge b-${esc(saved.severity)}">${esc(saved.severity)}</span> ${saved.class?`<span class="badge b-hipaa">${esc(saved.class)}</span>`:""}</div><div style="font-size:13px;color:var(--muted);margin:4px 0 8px">${esc(saved.description)}</div><div class="setrow" style="margin-top:8px"><button class="btn ghost sm" onclick="openRuleModal()">+ New rule</button><button class="btn sm" onclick="$('ruleModal').classList.remove('open');go('rules')">Done</button></div></div>`;
+    loadRules(); };
+}
+
+// ---- warnings ----
+let warnShowAcked=false;
+async function loadWarnings(){ const w=await j("/api/warnings"+(warnShowAcked?"?status=all":""));
+  const open=w.warnings.filter((x)=>x.status!=="acknowledged");
+  const cnt=$("warnCnt"); cnt.style.display=open.length?"":"none"; cnt.textContent=open.length;
+  const bar=`<div class="bar">${open.length?`<button class="btn sm" onclick="ackAllW()">Acknowledge all (${open.length})</button>`:""}<button class="btn ghost sm" onclick="warnShowAcked=!warnShowAcked;loadWarnings()">${warnShowAcked?"Hide acknowledged":"Show acknowledged"}</button></div>`;
+  const rows=w.warnings.length?w.warnings.map((x)=>{const a=x.status==="acknowledged";return `<div class="warning" ${a?'style="opacity:.5"':""}><span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span><div class="body"><div class="title">${esc(x.title)} ${x.class?`<span class="badge b-hipaa">${esc(x.class)}</span>`:""}</div><div class="detail">${esc(x.detail)}</div><div class="src">${esc(sysName(x.system_id))} · ${esc(localTime(x.created_at))}</div></div>${a?'<span class="quiet" style="padding:0">acknowledged</span>':`<button class="btn ghost sm" onclick="ackW('${esc(x.id)}')">Acknowledge</button>`}</div>`;}).join(""):'<div class="quiet">No open warnings. Quiet is good.</div>';
+  $("warnings").innerHTML=bar+rows; }
+async function ackW(id){ await post("/api/warnings/"+id+"/ack"); loadWarnings(); loadOverview(); }
+async function ackAllW(){ await post("/api/warnings/ack-all",{}); loadWarnings(); loadOverview(); }
+
+// ---- settings ----
+$("settingsBtn").onclick=()=>{ $("settings").classList.add("open"); loadAI(); loadChannels(); };
+$("setClose").onclick=()=>$("settings").classList.remove("open");
+$("setTabs").querySelectorAll("button").forEach((b)=>b.onclick=()=>{ $("setTabs").querySelectorAll("button").forEach((x)=>x.classList.toggle("on",x===b)); ["ai","alerts","about"].forEach((t)=>$("tab-"+t).style.display=t===b.dataset.t?"":"none"); });
+$("licenseBtn").onclick=()=>$("licenseOverlay").classList.add("open");
+function modelFam(id){ const m=(id||"").match(/(opus|sonnet|haiku|fable)/i); return m?m[1][0].toUpperCase()+m[1].slice(1).toLowerCase():""; }
+function aiGate(){ const fam=modelFam($("aiModel").value); $("fastWrap").style.display=fam==="Opus"?"":"none"; $("thinkWrap").style.display=(fam==="Fable")?"none":""; }
+async function loadAI(){ const a=await j("/api/ai");
+  $("aiModel").innerHTML=a.models.map((m)=>`<option value="${esc(m.id)}" ${m.id===a.model?"selected":""}>${esc(m.label)}${m.legacy?" (previous)":""}</option>`).join("");
+  $("aiThinking").value=a.thinking||""; $("aiFast").checked=a.speed!=="";
+  $("aiState").textContent=a.available?(a.fallback?"Built-in list (couldn't reach Anthropic).":"Live model list."):"No key set: add one below or as a Fly secret.";
+  aiGate();
+}
+$("aiModel").onchange=async()=>{ aiGate(); await post("/api/ai",{model:$("aiModel").value}); };
+$("aiThinking").onchange=()=>post("/api/ai",{thinking:$("aiThinking").value});
+$("aiFast").onchange=()=>post("/api/ai",{speed:$("aiFast").checked?"fast":""});
+$("aiKey").onchange=async()=>{ const k=$("aiKey").value.trim(); if(!k)return; await post("/api/ai",{api_key:k}); $("aiKey").value=""; $("aiState").textContent="Key saved."; };
+async function loadChannels(){ const p=await j("/api/prefs"); $("chSlack").value=p.slack_webhook||""; }
+$("chSave").onclick=async()=>{ await post("/api/prefs",{slack_webhook:$("chSlack").value.trim()}); $("chStatus").textContent="Saved."; setTimeout(()=>$("chStatus").textContent="",2000); };
+$("chTest").onclick=async()=>{ $("chStatus").textContent="Sending…"; const r=await post("/api/notify-test"); $("chStatus").textContent=`Slack ${r.sent?.slack?"✓":"–"}`; };
+
+const ABOUT = `<b>Clio: FileMaker logging for the AI Age.</b><br><br>Your FileMaker databases send log entries to Clio with a single Insert From URL script. The OnWindowTransaction trigger captures every record change, creation, and deletion automatically, plus anything else you choose to log: logins, exports, record views, script events. One URL works for every file; Clio sorts entries into a separate history for each database, however many files and FileMaker Servers you point at it. Existing log tables can be imported so your history is complete from day one.<br><br>Everything lands in a private database on your own Fly.io server, where it can be searched, filtered, and cross-referenced instantly: every change to a record, everything a person did on a Tuesday, every edit to one field across the years. A rules watchdog runs continuously, no AI required, and flags what you care about: weekend logins, mass deletes, big exports, a database that suddenly went quiet. Rules are written by describing them in plain English; alerts can go to Slack. Ask questions in plain English and get answers with real numbers and charts, built from your actual log, never guessed.<br><br>Because the log lives outside FileMaker, nobody with access to your file can quietly rewrite history. Every entry is cryptographically linked to the one before it, so deleting or altering anything in the past breaks the chain and shows. Source-available and small enough to read in an afternoon.<br><br>Matt Navarre · <a href="https://www.navarre.ai" style="color:var(--accent2)">www.navarre.ai</a> · © 2026.`;
 
 // ---- boot + live ----
 (async()=>{
-  await loadOverview(); renderThread(); renderRuleThread(); renderHistFilters();
-  loadWarnings(); pollPulse(); pollFeed(); pollRejects();
-  setInterval(pollRejects,15000);
-  setInterval(pollPulse,30000);
+  await loadOverview(); renderThread();
+  loadWarnings(); pollPulse(); loadLog(); loadActors(); pollRejects();
+  setInterval(pollRejects,15000); setInterval(pollPulse,30000);
   setInterval(()=>{ loadOverview(); loadWarnings(); },60000);
-  // SSE: refresh feed the instant anything lands; fall back to polling
-  try{ const es=new EventSource(api("/api/stream")); es.onmessage=()=>pollFeed(); es.addEventListener("log",()=>pollFeed()); es.onerror=()=>{}; }catch{}
-  setInterval(pollFeed,8000); // safety net + catch-up after sleep
+  try{ const es=new EventSource(api("/api/stream")); es.addEventListener("log",()=>pollLog()); es.addEventListener("warn",()=>{ loadWarnings(); loadOverviewQuiet(); }); es.onerror=()=>{}; }catch{}
+  setInterval(pollLog,8000);
 })();
 </script>
 </body>

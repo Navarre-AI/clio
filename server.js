@@ -14,8 +14,8 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { openDb, openDbReadOnly } from "./db.js";
 import { appendBatch, head, verifyRange } from "./chain.js";
 import { runScan, getPrefs } from "./scan.js";
-import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, currentModel, MODELS, listModels } from "./ai.js";
-import { runRules, dryRun, createRule, listRules } from "./rules.js";
+import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, setAIConfig, aiConfig, currentModel, MODELS, listModels } from "./ai.js";
+import { runRules, dryRun, createRule, listRules, updateRule, ruleFirings, seedDefaultRules } from "./rules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
@@ -81,7 +81,7 @@ function selfLog(event, fields = {}) {
 // One in-process fan-out. Every append pings open EventSource clients so the
 // UI updates with zero polling. Clients then pull new rows since their cursor.
 const sseClients = new Set();
-function emit() { for (const res of sseClients) { try { res.write("event: log\ndata: 1\n\n"); } catch {} } }
+function emit(ev = "log") { for (const res of sseClients) { try { res.write(`event: ${ev}\ndata: 1\n\n`); } catch {} } }
 
 // A rejected/failed post is recorded so a silent drop is never invisible.
 const insReject = db.prepare("INSERT INTO rejects (id, system_id, code, message, snippet) VALUES (?, ?, ?, ?, ?)");
@@ -271,7 +271,8 @@ function ingest(req, res) {
     return fail(res, 413, "batch_too_large", `At most ${MAX_BATCH} entries per batch.`);
   }
   const result = appendBatch(db, systemId, entries);
-  emit();
+  trackVocab(systemId, entries);
+  emit(); scheduleWatch();
   res.json(ok(echoData(systemId, entries, result, entries.length > 1 ? "batch" : "event")));
 }
 
@@ -279,7 +280,7 @@ app.post("/v1/log", ingestAuth, ingest);
 app.post("/v1/log/:key", ingestAuth, ingest); // key-in-URL: unknown key -> Unfiled, never dropped
 
 // OnWindowTransaction ingest: FileMaker POSTs the trigger's parameter
-// UNTOUCHED — { "File" : { "Table" : [ [ "Op", recId, contextFieldValue ], ... ] } }.
+// UNTOUCHED: { "File" : { "Table" : [ [ "Op", recId, contextFieldValue ], ... ] } }.
 // Clio does the unpacking: one chain entry per record op, in payload order.
 // action = <system>.<Table>.<op>, payload = { file, table, record_id, data }.
 function normalizeTxn(b, systemId) {
@@ -358,6 +359,18 @@ function trackFiles(systemId, entries) {
   for (const [file, n] of counts) upsertDbNew.run(systemId, file, n);
 }
 
+// Shadow vocabulary: every distinct action per system, with counts. Keeps
+// History's type filter and the AI's vocabulary instant at any log size.
+const upsertVocab = db.prepare(
+  `INSERT INTO action_vocab (system_id, action, count) VALUES (?, ?, ?)
+   ON CONFLICT(system_id, action) DO UPDATE SET count = count + excluded.count, last_seen = datetime('now')`
+);
+function trackVocab(systemId, entries) {
+  const counts = new Map();
+  for (const e of entries) counts.set(e.action || "", (counts.get(e.action || "") || 0) + 1);
+  for (const [a, n] of counts) if (a) upsertVocab.run(systemId, a, n);
+}
+
 // A transaction touching more than this many records (an import, a mass
 // Replace, a Delete All) collapses to one summary entry per file/table/op,
 // instead of exploding every record. Keeps the log readable and the ingest
@@ -414,7 +427,8 @@ function ingestTxn(req, res) {
   }
   const result = appendBatch(db, systemId, entries);
   trackFiles(systemId, entries);
-  emit();
+  trackVocab(systemId, entries);
+  emit(); scheduleWatch();
   res.json(ok(echoData(systemId, entries, result, collapsed ? "bulk" : "transaction", collapsed)));
 }
 
@@ -513,8 +527,8 @@ app.post("/v1/warnings/:id/ack", adminAuth, (req, res) => {
 });
 
 // Notification channels. Two, fire-and-forget, never block a scan:
-//   Slack  — an incoming-webhook URL; we send Slack's { text } (+ blocks).
-//   Webhook — a generic JSON POST for the Comm bus or anything else.
+//   Slack: an incoming-webhook URL; we send Slack's { text } (+ blocks).
+//   Webhook: a generic JSON POST for the Comm bus or anything else.
 // Both are read from prefs first (UI-settable), env as fallback. Email
 // stays the anchor script's job (FMS schedule notifications).
 function channels() {
@@ -548,7 +562,7 @@ async function deliver(alerts, { test = false } = {}) {
     const header = test ? "Clio test alert" :
       `Clio: ${alerts.length} thing${alerts.length === 1 ? "" : "s"} worth a look`;
     const lines = alerts.map((a) =>
-      `${SEV_EMOJI[a.severity] || "•"} *${a.system_id}* — ${a.title}\n${a.detail}`).join("\n\n");
+      `${SEV_EMOJI[a.severity] || "•"} *${a.system_id}*: ${a.title}\n${a.detail}`).join("\n\n");
     jobs.push(postJson(ch.slack, {
       text: `${header}\n${lines}`, // fallback/notification text
       blocks: [
@@ -579,20 +593,56 @@ async function doScan(force) {
   });
   if (!result.skipped) {
     selfLog("scan.run", { scan_id: result.scan_id, findings: result.findings });
+    if (result.findings > 0) emit("warn"); // push new firings so the UI updates live
     pushAlerts(result.scan_id); // deliberately not awaited
   }
   return result;
 }
 
+// Auto-watchdog: the scan runs on its own, debounced 20s after arrivals (so a
+// burst is judged once), plus an hourly sweep for silence-type rules. No Scan
+// button, nothing manual.
+let watchTimer = null;
+function scheduleWatch() {
+  if (watchTimer) return;
+  watchTimer = setTimeout(() => { watchTimer = null; doScan(true).catch(() => {}); }, 20000);
+}
+setInterval(() => doScan(true).catch(() => {}), 3600000); // hourly, for silence
+
 // ---- rules ------------------------------------------------------------------
 
 function actionVocab() {
   return db.prepare(
-    "SELECT system_id, action, COUNT(*) AS n FROM log_entries GROUP BY system_id, action ORDER BY n DESC LIMIT 80"
+    "SELECT system_id, action, count AS n FROM action_vocab ORDER BY n DESC LIMIT 80"
   ).all().map((a) => `${a.system_id} ${a.action} (${a.n})`).join("\n");
 }
 
+// The distinct action vocabulary (from the shadow table, instant), for History's
+// type filter. Optionally scoped to one or more systems.
+app.get("/api/vocab", (req, res) => {
+  const sys = String(req.query.system_id || "").split(",").filter(Boolean);
+  const where = sys.length ? `WHERE system_id IN (${sys.map(() => "?").join(",")})` : "";
+  const rows = db.prepare(
+    `SELECT action, SUM(count) AS n FROM action_vocab ${where} GROUP BY action ORDER BY n DESC`
+  ).all(...sys);
+  res.json({ actions: rows });
+});
+
+// Distinct people seen in the log (for the Person filter). Cached: the scan over
+// payload JSON is not free at 170k rows, and the set changes slowly.
+let actorsCache = { at: 0, rows: [] };
+app.get("/api/actors", (_req, res) => {
+  if (Date.now() - actorsCache.at > 300000) {
+    actorsCache = { at: Date.now(), rows: db.prepare(
+      `SELECT COALESCE(json_extract(payload_json,'$.account_name'), json_extract(payload_json,'$.data.z_Modifier')) AS who, COUNT(*) AS n
+       FROM log_entries WHERE system_id != 'clio' GROUP BY who HAVING who IS NOT NULL AND who != '' ORDER BY n DESC LIMIT 300`
+    ).all() };
+  }
+  res.json({ actors: actorsCache.rows });
+});
+
 app.get("/api/rules", (_req, res) => res.json({ rules: listRules(db) }));
+app.get("/api/rules/:id/firings", (req, res) => res.json({ firings: ruleFirings(db, req.params.id) }));
 
 app.post("/api/rules", (req, res) => {
   const r = req.body || {};
@@ -601,22 +651,14 @@ app.post("/api/rules", (req, res) => {
 });
 
 app.patch("/api/rules/:id", (req, res) => {
-  const fields = [];
-  const params = [];
-  for (const k of ["name", "description", "effect", "severity", "class"]) {
-    if (req.body[k] !== undefined) { fields.push(`${k} = ?`); params.push(String(req.body[k])); }
-  }
-  if (req.body.enabled !== undefined) { fields.push("enabled = ?"); params.push(req.body.enabled ? 1 : 0); }
-  if (req.body.match !== undefined) { fields.push("match_json = ?"); params.push(JSON.stringify(req.body.match)); }
-  if (req.body.match_patch !== undefined) { // merge into existing match (e.g. just the files scope)
+  const body = { ...req.body };
+  if (body.match_patch !== undefined) { // merge a partial into the existing match (e.g. just the files scope)
     let cur = {}; try { cur = JSON.parse(db.prepare("SELECT match_json FROM rules WHERE id = ?").get(req.params.id)?.match_json || "{}"); } catch {}
-    fields.push("match_json = ?"); params.push(JSON.stringify({ ...cur, ...req.body.match_patch }));
+    body.match = { ...cur, ...body.match_patch };
   }
-  if (!fields.length) return res.json({ ok: true });
-  params.push(req.params.id);
-  const r = db.prepare(`UPDATE rules SET ${fields.join(", ")} WHERE id = ?`).run(...params);
-  if (!r.changes) return res.status(404).json({ error: "no such rule" });
-  res.json({ ok: true });
+  const rule = updateRule(db, req.params.id, body);
+  if (!rule) return res.status(404).json({ error: "no such rule" });
+  res.json({ ok: true, rule: { ...rule, enabled: !!rule.enabled } });
 });
 
 app.delete("/api/rules/:id", (req, res) => {
@@ -654,17 +696,26 @@ app.post("/api/rules/author", async (req, res) => {
 
 app.get("/api/ai", async (_req, res) => {
   const { models, fallback } = await listModels();
-  res.json({ available: aiAvailable(), model: currentModel(), models, fallback });
+  const cfg = aiConfig();
+  res.json({ available: aiAvailable(), model: currentModel(), models, fallback,
+    thinking: cfg.thinking, speed: cfg.speed, key_set: cfg.key_override });
 });
 
 app.post("/api/ai", async (req, res) => {
-  const m = String(req.body?.model || "");
-  const { models } = await listModels();
-  if (m && (models.some((x) => x.id === m) || MODELS.some((x) => x.id === m))) {
+  const b = req.body || {};
+  if (b.model !== undefined) {
+    const m = String(b.model || "");
+    const { models } = await listModels();
+    if (!m || !(models.some((x) => x.id === m) || MODELS.some((x) => x.id === m)))
+      return res.status(400).json({ error: "unknown model" });
     setModel(m); metaSet("model", m);
-    return res.json({ ok: true, model: m });
   }
-  res.status(400).json({ error: "unknown model" });
+  if (b.thinking !== undefined) { setAIConfig({ thinking: String(b.thinking || "") }); metaSet("ai_thinking", String(b.thinking || "")); }
+  if (b.speed !== undefined) { setAIConfig({ speed: String(b.speed || "") }); metaSet("ai_speed", String(b.speed || "")); }
+  if (b.api_key !== undefined && String(b.api_key).trim() !== "") { // blank = keep current key
+    setAIConfig({ api_key: String(b.api_key).trim() }); metaSet("ai_key", String(b.api_key).trim());
+  }
+  res.json({ ok: true, model: currentModel(), ...aiConfig() });
 });
 
 app.post("/v1/scan", keyOrAdmin, async (req, res) => {
@@ -788,8 +839,10 @@ app.post("/v1/admin/systems/:id/archive", adminAuth, (req, res) => {
   res.json(ok({ summary, archive: { system_id: sid, head: summary.archived_head, entries: rows } }));
 });
 
-// Purge: the deliberate second pass. Delete the pre-tombstone rows and
-// re-genesis from the archive tombstone forward. Admin-gated; irreversible.
+// Purge: deletes ALL of a system's rows (including any archive tombstone) and its
+// file registrations; the next entry starts a fresh chain from genesis. If you want
+// provable pre-purge history, call archive first and keep its export. Admin-gated;
+// irreversible.
 app.post("/v1/admin/systems/:id/purge", adminAuth, (req, res) => {
   const sid = req.params.id;
   if (req.body?.confirm !== sid) return fail(res, 400, "confirm_required", `Send { "confirm": "${sid}" } to purge.`);
@@ -800,7 +853,6 @@ app.post("/v1/admin/systems/:id/purge", adminAuth, (req, res) => {
     db.prepare("DELETE FROM log_entries WHERE system_id = ?").run(sid);
     db.exec("CREATE TRIGGER log_no_delete BEFORE DELETE ON log_entries BEGIN SELECT RAISE(ABORT, 'log_entries is append-only'); END");
     db.prepare("DELETE FROM databases WHERE system_id = ?").run(sid);
-    db.prepare("UPDATE databases SET entry_count = 0 WHERE system_id = ?").run(sid);
     db.exec("COMMIT");
   } catch (e) { db.exec("ROLLBACK"); return fail(res, 500, "purge_failed", String(e.message || e)); }
   selfLog("admin.purge", { system_id: sid, removed: before });
@@ -850,25 +902,42 @@ app.get("/api/overview", (req, res) => {
       .all().map((r) => [r.system_id, r.n]));
   const dayAgo = new Date(Date.now() - 86400000).toISOString();
   const todayCounts = Object.fromEntries(
-    db.prepare("SELECT system_id, COUNT(*) AS n FROM log_entries WHERE ts_server >= ? GROUP BY system_id").all(dayAgo)
+    db.prepare("SELECT system_id, COUNT(*) AS n FROM log_entries WHERE COALESCE(NULLIF(ts_client,''), ts_server) >= ? GROUP BY system_id").all(dayAgo)
       .map((r) => [r.system_id, r.n]));
-  const dbsBySystem = {};
-  for (const d of db.prepare("SELECT * FROM databases").all()) (dbsBySystem[d.system_id] ||= []).push(d);
+  // A file displays under its link target (system_display) if set, otherwise its own
+  // system. Linked files keep their own chain but show under the target as a group.
+  const dbsByHome = {}; const linkedChildren = {};
+  for (const d of db.prepare("SELECT * FROM databases").all()) {
+    const home = d.system_display || d.system_id;
+    (dbsByHome[home] ||= []).push(d);
+    if (d.system_display && d.system_display !== d.system_id) (linkedChildren[d.system_display] ||= new Set()).add(d.system_id);
+  }
   const systems = ids
     .filter((sid) => showHidden || (reg[sid]?.display ?? 1))
-    .map((sid) => ({
-      ...head(db, sid),
-      display: reg[sid]?.display ?? 1,
-      today: todayCounts[sid] || 0,
-      open_warnings: openCounts[sid] || 0,
-      label: reg[sid]?.label || null,
-      fm_server: reg[sid]?.fm_server || null,
-      tz_offset: reg[sid]?.tz_offset ?? null,
-      databases: (dbsBySystem[sid] || []).map((d) => ({
-        file_name: d.file_name, name: d.friendly_name || d.file_name,
-        entry_count: d.entry_count, placed: !!d.placed, last_seen: d.last_seen,
-      })),
-    }));
+    .map((sid) => {
+      const base = head(db, sid);
+      let entry_count = base.entry_count || 0, today = todayCounts[sid] || 0, last = base.last_ts_server || null;
+      for (const c of (linkedChildren[sid] || [])) { // fold linked files' separate chains into the group's totals
+        const h = head(db, c); entry_count += h.entry_count || 0; today += todayCounts[c] || 0;
+        if (h.last_ts_server && (!last || h.last_ts_server > last)) last = h.last_ts_server;
+      }
+      return {
+        ...base, entry_count, last_ts_server: last,
+        display: reg[sid]?.display ?? 1,
+        today, open_warnings: openCounts[sid] || 0,
+        label: reg[sid]?.label || null,
+        fm_server: reg[sid]?.fm_server || null,
+        tz_offset: reg[sid]?.tz_offset ?? null,
+        databases: (dbsByHome[sid] || []).map((d) => ({
+          file_name: d.file_name, name: d.friendly_name || d.file_name,
+          entry_count: d.entry_count, placed: !!d.placed, last_seen: d.last_seen,
+          system_id: d.system_id, linked: !!(d.system_display && d.system_display !== d.system_id),
+        })),
+      };
+    })
+    // Unfiled is the catch-all safety net: only worth showing once something has landed
+    // in it. Empty = nothing was dropped, so don't clutter the list with it.
+    .filter((s) => !(s.system_id === "unfiled" && (s.entry_count || 0) === 0));
   systems.sort((a, b) => (a.label || a.system_id).localeCompare(b.label || b.system_id));
   // Unplaced files (any system) drive the new-database wizard.
   const unplaced = db.prepare("SELECT system_id, file_name, entry_count, last_seen FROM databases WHERE placed = 0 ORDER BY last_seen DESC").all();
@@ -887,7 +956,16 @@ app.get("/api/stream", (req, res) => {
 });
 
 app.get("/api/rejects", (_req, res) => {
-  res.json({ rejects: db.prepare("SELECT * FROM rejects ORDER BY ts DESC LIMIT 50").all() });
+  res.json({ rejects: db.prepare("SELECT * FROM rejects WHERE ack IS NULL ORDER BY ts DESC LIMIT 50").all() });
+});
+// Acknowledge the visible rejects (clears the red Live banner). Pass an id to ack
+// just one, or nothing to ack them all. The rows stay for the record, just hidden.
+app.post("/api/rejects/ack", (req, res) => {
+  const id = req.body?.id;
+  const r = id
+    ? db.prepare("UPDATE rejects SET ack = datetime('now') WHERE id = ? AND ack IS NULL").run(id)
+    : db.prepare("UPDATE rejects SET ack = datetime('now') WHERE ack IS NULL").run();
+  res.json({ ok: true, acknowledged: r.changes });
 });
 
 // New-database wizard. Placed files show under their system; unplaced wait here.
@@ -899,23 +977,32 @@ app.post("/api/databases/place", (req, res) => {
   const { system_id, file_name, mode, name, target } = req.body || {};
   if (!system_id || !file_name) return res.status(400).json({ error: "system_id and file_name required" });
   if (mode === "link") {
+    const dest = String(target || system_id);
     db.prepare("UPDATE databases SET placed = 1, system_display = ?, friendly_name = COALESCE(?, friendly_name) WHERE system_id = ? AND file_name = ?")
-      .run(String(target || system_id), name || null, system_id, file_name);
+      .run(dest, name || null, system_id, file_name);
+    // Hide the file's own auto-created system so it doesn't also show as a duplicate card;
+    // its file + activity now display under the destination system (chains stay separate).
+    // Ensure the row exists first: a universal-key-routed system has no systems row yet.
+    if (dest !== system_id) { upsertSystem(system_id, {}); db.prepare("UPDATE systems SET display = 0 WHERE system_id = ?").run(system_id); }
     return res.json({ ok: true });
   }
-  // own: create/keep a system named after the file, hand back a fresh key + URL
-  const newSid = slugify(name || file_name);
-  upsertSystem(newSid, { label: name || file_name });
+  // own: this file already logs to its own system (routed by name via the universal
+  // key). Just confirm it: name it, show it, mark placed. No per-file key or URL.
+  // An existing label wins: if the admin already renamed this system, the wizard's
+  // default (the file name) must not clobber it.
+  upsertSystem(system_id, {});
+  db.prepare("UPDATE systems SET label = COALESCE(label, ?), display = 1 WHERE system_id = ?")
+    .run(name || file_name, system_id);
   db.prepare("UPDATE databases SET placed = 1, system_display = ?, friendly_name = COALESCE(?, friendly_name) WHERE system_id = ? AND file_name = ?")
-    .run(newSid, name || file_name, system_id, file_name);
-  const key = generateApiKey(); const id = randomUUID();
-  db.prepare("INSERT INTO api_keys (id, system_id, label, key_hash) VALUES (?, ?, ?, ?)").run(id, newSid, name || file_name, sha256Hex(key));
-  selfLog("admin.system_created", { system_id: newSid, from_file: file_name });
-  res.json({ ok: true, system_id: newSid, url: publicUrl(req, `/v1/log/${key}`) });
+    .run(system_id, name || file_name, system_id, file_name);
+  selfLog("admin.system_confirmed", { system_id, from_file: file_name });
+  res.json({ ok: true, system_id });
 });
 app.post("/api/databases/unlink", (req, res) => {
   const { system_id, file_name } = req.body || {};
   db.prepare("UPDATE databases SET placed = 0, system_display = NULL WHERE system_id = ? AND file_name = ?").run(system_id, file_name);
+  // Bring the file's own system back into view (it was hidden when linked).
+  db.prepare("UPDATE systems SET display = 1 WHERE system_id = ?").run(system_id);
   res.json({ ok: true });
 });
 
@@ -941,17 +1028,47 @@ app.post("/api/databases/rename", (req, res) => {
 // newest first across every system (poll with since=<last ts_server seen>).
 app.get("/api/logs", (req, res) => {
   const sid = String(req.query.system_id || "");
-  if (sid) return res.json(queryLogs(sid, req.query));
+  if (sid && !req.query.q) return res.json(queryLogs(sid, req.query));
   const where = []; const params = [];
+  if (sid) { where.push("system_id = ?"); params.push(sid); }
+  // Multi-select systems filter. With no explicit selection, Clio's own internal
+  // log stays out of the way; pick the clio system to see it.
+  const sysList = String(req.query.systems || "").split(",").filter(Boolean);
+  if (sysList.length) { where.push(`system_id IN (${sysList.map(() => "?").join(",")})`); params.push(...sysList); }
+  else if (!sid) where.push("system_id != 'clio'");
+  if (req.query.person) {
+    where.push("COALESCE(json_extract(payload_json,'$.account_name'), json_extract(payload_json,'$.data.z_Modifier')) = ?");
+    params.push(String(req.query.person));
+  }
+  // Event-time range (from/to use real event time; `since` stays ts_server for tail polling)
+  const EVT = "COALESCE(NULLIF(ts_client,''), ts_server)";
+  if (req.query.from) { where.push(`${EVT} >= ?`); params.push(String(req.query.from)); }
+  if (req.query.to) { where.push(`${EVT} < ?`); params.push(String(req.query.to)); }
   if (req.query.since) { where.push("ts_server > ?"); params.push(String(req.query.since)); }
-  if (req.query.q) { where.push("(payload_json LIKE ? OR action LIKE ?)"); params.push(`%${req.query.q}%`, `%${req.query.q}%`); }
+  // Search: FileMaker Find semantics. Each term must match at the START of a word,
+  // and multiple terms AND together. SQL LIKE narrows the candidates cheaply; the
+  // word-boundary test happens here, where \b actually exists.
+  const terms = String(req.query.q || "").trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
+  for (const t of terms) {
+    where.push("(LOWER(payload_json) LIKE ? OR LOWER(action) LIKE ?)");
+    params.push(`%${t}%`, `%${t}%`);
+  }
   const limit = Math.min(Number(req.query.limit) || 50, 500);
-  const rows = db.prepare(
-    `SELECT system_id, seq, ts_client, ts_server, category, action, payload_json
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+  let sql = `SELECT system_id, seq, ts_client, ts_server, category, action, payload_json
      FROM log_entries ${where.length ? "WHERE " + where.join(" AND ") : ""}
-     ORDER BY ts_server DESC, system_id, seq DESC LIMIT ${limit}`
-  ).all(...params);
-  res.json({ entries: rows, latest_ts: rows.length ? rows[0].ts_server : (req.query.since || null) });
+     ORDER BY ts_server DESC, system_id, seq DESC`;
+  let rows;
+  if (terms.length) {
+    // Over-fetch, then enforce word-start (\b) per term; page after the boundary test.
+    const boundary = terms.map((t) => new RegExp("\\b" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+    const candidates = db.prepare(sql + ` LIMIT ${Math.min((offset + limit) * 4 + 200, 5000)}`).all(...params);
+    rows = candidates.filter((r) => { const hay = r.action + " " + r.payload_json; return boundary.every((re) => re.test(hay)); })
+      .slice(offset, offset + limit);
+  } else {
+    rows = db.prepare(sql + ` LIMIT ${limit} OFFSET ${offset}`).all(...params);
+  }
+  res.json({ entries: rows, latest_ts: rows.length && !offset ? rows[0].ts_server : (req.query.since || null) });
 });
 
 // History, computed at read time from the raw log. Two modes:
@@ -960,28 +1077,33 @@ app.get("/api/logs", (req, res) => {
 //     value per field (works for lean "only-changed" and fat "full-record").
 //   list mode: cross-dimensional filter (actor, table, field, date, value) ->
 //     matching changes, newest first. No precomputation, pure SQL + a walk.
+// Bookkeeping fields change on every commit and say nothing but "an edit happened".
+// They stay in the raw payload; they just don't get paraded in change lists.
+function isHousekeeping(f) {
+  return /^z_|^(modif|creat)/i.test(f) || /(_|\b)(ts|time|timestamp|date)$/i.test(f);
+}
+
 app.get("/api/history", (req, res) => {
   const q = req.query;
-  const sid = String(q.system_id || "");
-  if (!sid) return res.status(400).json({ error: "system_id required" });
-  const where = ["system_id = ?"]; const params = [sid];
+  const where = []; const params = [];
+  // one system, or a multi-select list, or (nothing) = all
+  if (q.system_id) { where.push("system_id = ?"); params.push(String(q.system_id)); }
+  else if (q.systems) { const list = String(q.systems).split(",").filter(Boolean); if (list.length) { where.push(`system_id IN (${list.map(() => "?").join(",")})`); params.push(...list); } }
   if (q.table) { where.push("json_extract(payload_json,'$.table') = ?"); params.push(String(q.table)); }
   if (q.record_id) { where.push("json_extract(payload_json,'$.record_id') = ?"); params.push(Number(q.record_id)); }
   if (q.actor) { where.push("(json_extract(payload_json,'$.account_name') = ? OR json_extract(payload_json,'$.data.z_Modifier') = ?)"); params.push(String(q.actor), String(q.actor)); }
-  if (q.action_type) { // friendly CRUD filter -> action patterns
-    const map = { create: "%.new", update: "%.modified", delete: "%.deleted", read: "%view%", login: "%login%", export: "%export%" };
-    const pat = map[String(q.action_type)];
-    if (pat) { where.push("(action LIKE ? OR action LIKE ?)"); params.push(pat, pat.replace("%.", "%.created")); }
-  }
-  if (q.since) { where.push("ts_client >= ?"); params.push(String(q.since)); }
-  if (q.until) { where.push("ts_client < ?"); params.push(String(q.until)); }
+  if (q.actions) { const list = String(q.actions).split(",").filter(Boolean); if (list.length) { where.push(`action IN (${list.map(() => "?").join(",")})`); params.push(...list); } }
+  // event time = client stamp when present, else arrival (old rows have blank ts_client)
+  const TS = "COALESCE(NULLIF(ts_client,''), ts_server)";
+  if (q.since) { where.push(`${TS} >= ?`); params.push(String(q.since)); }
+  if (q.until) { where.push(`${TS} < ?`); params.push(String(q.until)); }
   if (q.q) { where.push("payload_json LIKE ?"); params.push(`%${q.q}%`); }
   const recordMode = Boolean(q.record_id && q.table);
   const field = q.field ? String(q.field) : null;
   const limit = Math.min(Number(q.limit) || 300, 2000);
   const rows = db.prepare(
-    `SELECT seq, ts_server, action, payload_json FROM log_entries
-     WHERE ${where.join(" AND ")} ORDER BY seq ${recordMode ? "ASC" : "DESC"} LIMIT ${limit}`
+    `SELECT seq, system_id, ${TS} AS ts, action, payload_json FROM log_entries
+     ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY seq ${recordMode ? "ASC" : "DESC"} LIMIT ${limit}`
   ).all(...params);
 
   const parse = (s) => { try { return JSON.parse(s); } catch { return {}; } };
@@ -999,17 +1121,17 @@ app.get("/api/history", (req, res) => {
         if (before !== undefined && JSON.stringify(before) !== JSON.stringify(v)) changes.push({ field: f, from: before, to: v });
         last[f] = v;
       }
-      const shown = field ? changes.filter((c) => c.field === field) : changes.filter((c) => !c.field.startsWith("z_"));
-      if (shown.length || (!field && e.action.endsWith(".new"))) items.push({ seq: e.seq, ts: e.ts_server, who, action: e.action, changes: shown });
+      const shown = field ? changes.filter((c) => c.field === field) : changes.filter((c) => !isHousekeeping(c.field));
+      if (shown.length || (!field && e.action.endsWith(".new"))) items.push({ seq: e.seq, system_id: e.system_id, ts: e.ts, who, action: e.action, changes: shown });
     }
     items.reverse(); // newest first for display
   } else {
     for (const e of rows) {
       const p = parse(e.payload_json);
       const data = p.data && typeof p.data === "object" ? p.data : null;
-      const fields = data ? Object.keys(data).filter((k) => !/^(id|record_id|z_)/.test(k)) : [];
+      const fields = data ? Object.keys(data).filter((k) => !/^(id|record_id)/.test(k) && !isHousekeeping(k)) : [];
       if (field && !fields.includes(field)) continue;
-      items.push({ seq: e.seq, ts: e.ts_server, who: p.account_name || data?.z_Modifier || null,
+      items.push({ seq: e.seq, system_id: e.system_id, ts: e.ts, who: p.account_name || data?.z_Modifier || null,
         action: e.action, table: p.table || null, record_id: p.record_id ?? null, fields, message: p.message || null });
     }
   }
@@ -1070,7 +1192,7 @@ app.post("/api/notify-test", async (_req, res) => {
 async function buildPulse(total) {
   const dayAgo = new Date(Date.now() - 86400000).toISOString();
   const perSystem = db.prepare(
-    "SELECT system_id, COUNT(*) AS n FROM log_entries WHERE ts_server >= ? GROUP BY system_id ORDER BY n DESC"
+    "SELECT system_id, COUNT(*) AS n FROM log_entries WHERE COALESCE(NULLIF(ts_client,''), ts_server) >= ? GROUP BY system_id ORDER BY n DESC"
   ).all(dayAgo);
   const topActions = db.prepare(
     "SELECT action, COUNT(*) AS n FROM log_entries WHERE ts_server >= ? GROUP BY action ORDER BY n DESC LIMIT 8"
@@ -1122,12 +1244,30 @@ app.get("/api/pulse", async (_req, res) => {
 });
 
 app.get("/api/warnings", (req, res) => {
-  res.json({ warnings: listWarnings(req.query.system_id && String(req.query.system_id), "open") });
+  const sys = req.query.system_id && String(req.query.system_id);
+  // status=all → open + acknowledged (for "show acknowledged"); default open only
+  const status = req.query.status === "all" ? null : (req.query.status ? String(req.query.status) : "open");
+  res.json({ warnings: listWarnings(sys, status) });
 });
 
 app.post("/api/warnings/:id/ack", (req, res) => {
   const r = db.prepare("UPDATE warnings SET status = 'acknowledged' WHERE id = ?").run(req.params.id);
   res.json({ acknowledged: Boolean(r.changes) });
+});
+// Acknowledge every open warning at once (optionally scoped to one system).
+app.post("/api/warnings/ack-all", (req, res) => {
+  const sys = req.body?.system_id;
+  const r = sys
+    ? db.prepare("UPDATE warnings SET status = 'acknowledged' WHERE status = 'open' AND system_id = ?").run(String(sys))
+    : db.prepare("UPDATE warnings SET status = 'acknowledged' WHERE status = 'open'").run();
+  res.json({ ok: true, acknowledged: r.changes });
+});
+// One log entry's full detail (for the History row detail modal).
+app.get("/api/entry", (req, res) => {
+  const sys = String(req.query.system_id || ""); const seq = Number(req.query.seq);
+  if (!sys || !Number.isFinite(seq)) return res.status(400).json({ error: "system_id and seq required" });
+  const e = db.prepare("SELECT seq, system_id, ts_client, ts_server, category, action, payload_json FROM log_entries WHERE system_id = ? AND seq = ?").get(sys, seq);
+  res.json({ entry: e || null });
 });
 
 app.get("/api/verify", (req, res) => {
@@ -1171,9 +1311,27 @@ app.use((e, req, res, _next) => {
 
 // Restore the saved AI model choice (Settings > AI persists it to meta).
 try { const m = metaGet("model"); if (m) setModel(m); } catch {}
+try { setAIConfig({ api_key: metaGet("ai_key") || undefined, thinking: metaGet("ai_thinking") ?? undefined, speed: metaGet("ai_speed") ?? undefined }); } catch {}
 // Warm the model list (non-blocking) so Settings opens instantly.
 setTimeout(() => { listModels().catch(() => {}); }, 3000);
+// Seed sensible default rules on a fresh install (day one is useful).
+try { seedDefaultRules(db); } catch {}
+// Backfill the vocabulary shadow table once, so History's type filter works
+// for logs that predate it.
+try {
+  if (db.prepare("SELECT COUNT(*) n FROM action_vocab").get().n === 0) {
+    db.prepare("INSERT INTO action_vocab (system_id, action, count) SELECT system_id, action, COUNT(*) FROM log_entries GROUP BY system_id, action").run();
+  }
+} catch {}
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(JSON.stringify({ level: "info", msg: `Clio listening on :${PORT}`, db: DB_PATH, ai: aiAvailable(), model: currentModel() }));
+});
+
+// Graceful shutdown: stop accepting, finish in-flight requests, close the DB
+// cleanly so WAL checkpoints. A kill mid-append can't corrupt the chain (SQLite
+// transactions see to that), but a clean close keeps restarts instant.
+for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => {
+  server.close(() => { try { db.close(); } catch {} process.exit(0); });
+  setTimeout(() => process.exit(0), 8000).unref(); // don't hang the deploy
 });

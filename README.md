@@ -18,10 +18,12 @@ What it is not: another log table. Log tables are diaries. Clio is testimony.
 - **Hash-chained per system.** Every entry's hash covers its content and the
   previous entry's hash. Any number of systems, each with its own key and its
   own tamper-evident chain, all logging to one Clio. Spec: `CHAIN.md`.
-- **Daily anchor.** A FileMaker Server schedule stores Clio's chain head
-  inside your own file and re-verifies yesterday's anchor
-  (`filemaker/Clio Daily Anchor.md`). Even the server operator rewriting
-  history would be caught.
+- **Optional external anchor.** Clio never writes to FileMaker. If you want an
+  independent copy of the chain head (so even the server operator rewriting
+  history would be caught), you can set up a FileMaker Server schedule that
+  pulls `GET /v1/head` into your own file on a cadence you choose
+  (`filemaker/Clio Daily Anchor.md`). This is a FileMaker-side setup you build,
+  not something Clio does on its own.
 - **The pulse, not just the record.** A daily pattern scan compares the last
   24 hours against a 14-day baseline (error spikes, brand-new event types,
   systems gone silent) and files warnings. With an Anthropic key, AI words the
