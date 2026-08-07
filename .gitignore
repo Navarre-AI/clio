@@ -13,3 +13,4 @@ demo/data/
 # never here.
 from-filemaker/
 *.fmp12
+HANDOFF*.md
