@@ -146,3 +146,17 @@ Three scripts, fully specified in `filemaker/`:
 
 Server setup notes: `SETUP.md`. Security model and its honest limits:
 `SECURITY.md`.
+
+## Make it yours
+
+- `EXTENDING.md`: fork it and build. The map, the seams, and recipes for new
+  alert channels, retention schedules, a second capture path, semantic search,
+  and more.
+- `CHAIN.md`: the hash-chain spec. Frozen format, so you can verify Clio's
+  chains with your own code and never have to trust this one.
+- `RULES.md`: the contract the AI layer works under (it words findings, it
+  never computes a number).
+- `docs/WATCHDOG.md`: how the detectors work and what is deliberately not
+  being built.
+- License: attribution required, no resale without permission. See `LICENSE`.
+  © 2026 Matt Navarre, [navarre.ai](https://navarre.ai)
