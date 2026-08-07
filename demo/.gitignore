@@ -1,4 +1,5 @@
-# The generated demo DB is a committed artifact (the repo root ignores data/
-# and *.db; these negations re-include exactly the one file that matters).
-!data/
-!data/clio.db
+# The demo DB is a build artifact, not source: `node demo/generate.mjs` (or
+# `npm run sample`) rebuilds it in about 15 seconds, and Dockerfile.demo
+# generates it during the image build. Keeping it out of git is what stops an
+# 80MB binary from living in this repo's history forever.
+data/
