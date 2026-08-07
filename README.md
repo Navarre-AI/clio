@@ -116,9 +116,18 @@ Machine surface, `Authorization: Bearer <key>`, envelope `{ok, data|error}`:
 | `GET /v1/warnings` | key or admin | Open warnings |
 | `POST /v1/scan` | key or admin | Run the daily pattern scan (deduped per day) |
 | `POST /v1/admin/keys`, `GET`, `DELETE /:id` | admin | Mint (plaintext shown once) / list / revoke |
+| `POST /v1/admin/systems/:id/archive` | admin | Snapshot a system's whole log and export it; appends a tombstone. Non-destructive |
+| `POST /v1/admin/systems/:id/purge` | admin | Delete one system's records. Needs `{"confirm":"<system_id>"}`. Irreversible |
 | `GET /health`, `GET /v1/info` | none | Liveness and version |
 
 Admin callers pass `?system_id=`; key callers are scoped to their own system.
+
+**Getting data out, and getting rid of it.** Append-only is enforced for
+anything holding an API key: no updates, no deletes, at the route level and in
+the schema. Removal is admin-only and deliberately awkward. Archive first (it
+returns the full export and records the archival on the chain), then purge that
+system by name. The UI puts both in a "Danger zone" on each system's settings.
+Purging one system never touches another.
 The ingest contract matches the navarre-sidecars chassis shipper exactly:
 point any sidecar's `CLIO_URL` + `CLIO_API_KEY` here and its audit events flow
 in unchanged.

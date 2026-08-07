@@ -15,12 +15,19 @@ roadmap. They are here because the code is yours and these are the doors.
 
 Two halves, both load-bearing:
 
-1. **Append-only, all the way down.** There is no update path and no delete
-   path, not in the routes, not in `chain.js`, and not in the schema (SQLite
-   triggers refuse `UPDATE` and `DELETE` on the entries table). If you add a
-   feature that needs to change a past entry, you have not found a missing
-   feature, you have found the point of the project. Append a correcting entry
-   instead.
+1. **Append-only, with exactly one door.** There is no update path at all, and
+   no delete path reachable with an API key: not in the routes, not in
+   `chain.js`, and not in the schema (SQLite triggers refuse `UPDATE` and
+   `DELETE` on the entries table). If you add a feature that needs to change a
+   past entry, you have not found a missing feature, you have found the point
+   of the project. Append a correcting entry instead.
+
+   The single exception is deliberate and worth understanding before you touch
+   it: an admin can archive a system and then purge it (see the retention
+   recipe below). It requires the admin token, names the system in a
+   confirmation string, restores the trigger immediately, and is scoped to one
+   system. That is the whole escape hatch. Keep it to one, keep it loud, and
+   never widen it to something a logging key can reach.
 2. **AI words things; it never counts them.** The model turns findings into
    sentences and questions into filters. Every count, rate, and comparison
    comes from SQL. Keep that split (`RULES.md` is the contract) and Clio stays
@@ -69,12 +76,23 @@ the UI.
 
 ### Type-aware retention (`docs/ROADMAP-2.0.md`)
 Different record types deserve different lifespans: deletions forever, edits
-six months, logins three. The trap is that a plain `DELETE` would break the
-chain and defeat the whole point. The shape that works: roll the expiring span
-into a signed archive that preserves its final head hash, append a summary
-tombstone entry, and only then purge. Seam: a new module beside `scan.js`, plus
-an archive format decision. The largest item on this list, and the one most
-worth doing carefully.
+six months, logins three.
+
+**The hard part is already built.** `POST /v1/admin/systems/:id/archive`
+snapshots a system's whole log (counts by action, file, and actor, plus the
+final head hash), returns the export, and appends a tombstone entry so the act
+of archiving is itself on the chain. `POST /v1/admin/systems/:id/purge` then
+removes that system's rows, dropping and immediately recreating the append-only
+trigger inside a transaction. Admin-gated, and it refuses unless the body
+carries `{ "confirm": "<system_id>" }`. Both are wired to the "Danger zone" in
+each system's settings panel.
+
+What retention adds on top is *selection and schedule*: today archive and purge
+are all-or-nothing for one system, and retention needs them to act on a span
+(everything older than N months, for these action types). Seam: a new module
+beside `scan.js` that decides what expires, then drives the existing
+archive-then-purge pair per span. Do not add a second delete path; there should
+stay exactly one, and it should stay this one.
 
 ### Retroactive rule runs (`docs/ROADMAP-2.0.md`)
 Today a new rule only sees new entries; `dryRun` in `rules.js` already counts
