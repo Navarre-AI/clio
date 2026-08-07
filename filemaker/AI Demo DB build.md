@@ -1,7 +1,9 @@
 # Building Clio into AI Demo DB
 
-Tailored to the actual schema (from `from-filemaker/AI Demo DB.xml`,
-24 base tables). This file + the deployed Clio at **https://clio-log.fly.dev**.
+Tailored to the actual schema (24 base tables), read from a Save a Copy as XML
+export kept outside this repo. Those exports carry the file's whole
+AccountsCatalog, password material included, so they live in clio-deployments
+and never here. This file + the deployed Clio at **https://clio-log.fly.dev**.
 
 ## Settings
 

@@ -7,3 +7,9 @@ fly.toml
 *.db-wal
 .DS_Store
 demo/data/
+
+# FileMaker structural exports (Save a Copy as XML / DDR) carry the whole
+# AccountsCatalog, password material included. They live in clio-deployments,
+# never here.
+from-filemaker/
+*.fmp12
