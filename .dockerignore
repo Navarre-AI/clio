@@ -1,9 +1,22 @@
 node_modules
 data
 .env
+.env.*
+*.env
 .git
 test
 filemaker
-*.md
+**/*.md
 fly.toml
 .DS_Store
+secrets*
+# Nothing of Matt's rides along into a public image: local tool settings, the
+# internal roadmaps, and the FileMaker sample export are all runtime-irrelevant.
+.claude
+docs
+from-filemaker
+# The dataset is generated inside the image (Dockerfile.demo runs the
+# generator), so a local copy is just build-context weight. Excluding the whole
+# directory also keeps a stale -wal from riding along next to a checkpointed
+# .db, which is how a "why is the demo missing entries" afternoon starts.
+demo/data

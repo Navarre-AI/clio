@@ -1,0 +1,32 @@
+# The read-only demo image (Fly app clio-demo). Same code as normal Clio; the
+# only differences are baked here:
+#   - DEMO_MODE=1, so every write-shaped route refuses at the route level.
+#   - the fictional dataset is GENERATED at build time (about 15 seconds) and
+#     written straight to the runtime DB path, so a machine boots by opening a
+#     file that is already there. No generation, no migration, no restore at
+#     boot. The dataset is not in git; the generator that makes it is.
+#   - no secrets: no .env is in the build context (.dockerignore), no
+#     ANTHROPIC_API_KEY, no ADMIN_TOKEN. DEMO_MODE ignores all of them anyway.
+# Two stages so the dataset is carried exactly once in the final image.
+FROM node:24-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY . .
+# No --now, so the data is always recent relative to the build. Pass
+# DEMO_NOW to pin it instead. demo/*.js stays: server.js imports
+# demo/demosession.js and demo/demolive.js at runtime.
+RUN node demo/generate.mjs \
+  && mkdir -p /demo-data \
+  && mv demo/data/clio.db /demo-data/clio.db \
+  && rm -rf demo/data demo/verify.mjs demo/generate.mjs
+
+FROM node:24-slim
+WORKDIR /app
+COPY --from=build /app /app
+COPY --from=build /demo-data /demo-data
+ENV PORT=8080
+ENV DEMO_MODE=1
+ENV DATA_DIR=/demo-data
+EXPOSE 8080
+CMD ["node", "server.js"]

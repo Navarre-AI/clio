@@ -52,11 +52,14 @@ not a summary of it.
 | `ai.js` | The optional Anthropic layer: words warnings, answers questions, never computes a number (`RULES.md`). |
 | `public/index.html` | The entire UI, one file, no build step. |
 | `filemaker/` | The three scripts your FileMaker file needs, fully specified. |
+| `demo/` | The sample dataset generator and the read-only demo mode. |
 | `test/` | `npm test`. No framework beyond `node:test`. |
 
-Clio ships with no sample data on purpose: your chain starts empty, so its
-first entry is genuinely your first event and the history stays honest. Seeing
-it populated is what the hosted demo is for.
+**Sample data.** Your own chain starts empty, so its first entry is genuinely
+your first event. If you want something to look at first, `node demo/generate.mjs`
+builds a fictional dataset (two invented companies, no real anything) that you
+can load as its own system and remove in one click from that system's Danger
+zone. The generated database is not in this repo; it is built on demand.
 
 ## Quick start (local)
 
@@ -128,6 +131,7 @@ the schema. Removal is admin-only and deliberately awkward. Archive first (it
 returns the full export and records the archival on the chain), then purge that
 system by name. The UI puts both in a "Danger zone" on each system's settings.
 Purging one system never touches another.
+
 The ingest contract matches the navarre-sidecars chassis shipper exactly:
 point any sidecar's `CLIO_URL` + `CLIO_API_KEY` here and its audit events flow
 in unchanged.

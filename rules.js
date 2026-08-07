@@ -31,6 +31,11 @@ function buildWhere(db, match, sinceIso) {
   const tz = tzModifier(db);
   const where = ["ts_server >= ?"]; const params = [sinceIso];
   if (match.system) { where.push("system_id = ?"); params.push(match.system); }
+  // Clio's own operational log is never watchdogged, for the same reason the
+  // automatic detectors skip it (scan.js): its scan/connect/verify entries would
+  // trip generic rules every day, and a log server warning about its own logging
+  // is noise. Target it deliberately with match.system if you really want it.
+  else where.push("system_id != 'clio'");
   if (match.action_like) { where.push("action LIKE ?"); params.push(match.action_like); }
   if (match.category_like) { where.push("category LIKE ?"); params.push(match.category_like); }
   if (match.actor) { where.push("json_extract(payload_json, '$.account_name') = ?"); params.push(match.actor); }
@@ -101,13 +106,26 @@ export function evaluateRule(db, rule, now = Date.now()) {
   }
 
   const windowMin = Number(match.window_minutes) || 1440;
-  const sinceIso = new Date(now - windowMin * 60000).toISOString();
+  // The window is a SLIDING one inside the last day, not the N minutes that
+  // happen to precede the scan. Without this, "20 deletions in an hour" could
+  // only ever fire if the burst landed in the hour before the nightly scan, so
+  // the rule looked broken every other time: the burst was in the log, the scan
+  // ran at 6 AM, and nothing was reported. Fetch a day (or the window, whichever
+  // is longer) and slide.
+  const lookbackMin = Math.max(windowMin, 1440);
+  const sinceIso = new Date(now - lookbackMin * 60000).toISOString();
   const { sql, params } = buildWhere(db, match, sinceIso);
 
-  const rows = db.prepare(
+  let rows = db.prepare(
     `SELECT system_id, action, ts_server, payload_json FROM log_entries WHERE ${sql} ORDER BY ts_server`
   ).all(...params);
   if (!rows.length) return null;
+
+  // A single suspicious event is a fact; the same event happening every Friday is
+  // the finding. Look back over `recur_days` (90 by default) with the SAME match
+  // spec, in local time, and report a weekday cadence only when the data really
+  // shows one (see recurrence()). Nothing is asserted that the log does not say.
+  const recur = recurrence(db, match, Number(match.recur_days) || 90, now); // Map system_id -> {text, evidence}
 
   const threshold = Number(match.count_gte) || 1;
   if (rows.length < threshold) return null;
@@ -116,13 +134,21 @@ export function evaluateRule(db, rule, now = Date.now()) {
   const bySystem = {};
   for (const r of rows) (bySystem[r.system_id] ||= []).push(r);
   const findings = [];
-  for (const [systemId, hits] of Object.entries(bySystem)) {
+  for (let [systemId, hits] of Object.entries(bySystem)) {
+    if (threshold > 1) {
+      const burst = densestWindow(hits, windowMin);
+      if (burst.length < threshold) continue;
+      hits = burst; // report the burst, not the whole day
+    }
     if (hits.length < threshold && Object.keys(bySystem).length > 1) continue;
     const actors = [...new Set(hits.map((h) => {
       try { return JSON.parse(h.payload_json).account_name; } catch { return null; }
     }).filter(Boolean))];
-    const detail = `${rule.description}: ${hits.length} matching event${hits.length === 1 ? "" : "s"} ` +
-      `in the last ${humanWindow(windowMin)}` + (actors.length ? ` (${actors.join(", ")})` : "") + ".";
+    const example = exampleOf(hits[hits.length - 1]);
+    const detail = `${String(rule.description || "").replace(/\.\s*$/, "")}: ${hits.length} matching event${hits.length === 1 ? "" : "s"} ` +
+      `in the last ${humanWindow(windowMin)}` + (actors.length ? ` (${actors.join(", ")})` : "") + "." +
+      (example ? ` For example: ${example}.` : "") +
+      (recur.get(systemId) ? ` ${recur.get(systemId).text}` : "");
     findings.push({
       system_id: systemId,
       severity: rule.severity,
@@ -131,10 +157,86 @@ export function evaluateRule(db, rule, now = Date.now()) {
       class: rule.class || null,
       source: `rule:${rule.id}`,
       evidence: { rule_id: rule.id, count: hits.length, window_minutes: windowMin,
+        example: example || null,
+        recurrence: recur.get(systemId)?.evidence || null,
         sample: hits.slice(-5).map((h) => ({ action: h.action, ts: h.ts_server })) },
     });
   }
   return findings;
+}
+
+// The most entries this rule matched inside any window_minutes-wide span of the
+// rows given (two pointers over an already time-ordered list).
+function densestWindow(hits, windowMin) {
+  const span = windowMin * 60000;
+  let best = [], lo = 0;
+  for (let hi = 0; hi < hits.length; hi++) {
+    while (Date.parse(hits[hi].ts_server) - Date.parse(hits[lo].ts_server) > span) lo++;
+    if (hi - lo + 1 > best.length) best = hits.slice(lo, hi + 1);
+  }
+  return best;
+}
+
+// ---- recurrence + example ---------------------------------------------------
+// "Invoice 2614 was created and deleted the same day" is a fact. "This happens
+// every Friday" is what makes someone act. Both are computed from the log here,
+// deterministically; the model is never asked to spot a pattern, and no cadence
+// is claimed unless the entries really cluster on one weekday.
+
+const DOW_PLURAL = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+
+// A rule fires on a weekday cadence when, over the lookback window, its matches
+// land on the SAME local weekday on at least 3 different dates and that weekday
+// holds at least 80% of them. Anything looser is noise and stays unsaid.
+export function recurrence(db, match, days = 90, now = Date.now()) {
+  const out = new Map();
+  if (!match || match.silence) return out;
+  const sinceIso = new Date(now - days * 86400000).toISOString();
+  let sql, params;
+  try { ({ sql, params } = buildWhere(db, match, sinceIso)); } catch { return out; }
+  const tz = tzModifier(db);
+  let rows = [];
+  try {
+    rows = db.prepare(
+      `SELECT system_id,
+              CAST(strftime('%w', datetime(ts_server, ?)) AS INTEGER) AS dow,
+              COUNT(*) AS n,
+              COUNT(DISTINCT date(datetime(ts_server, ?))) AS dates,
+              MAX(ts_server) AS last_ts
+       FROM log_entries WHERE ${sql} GROUP BY system_id, dow`
+    ).all(tz, tz, ...params);
+  } catch { return out; }
+
+  const bySystem = {};
+  for (const r of rows) (bySystem[r.system_id] ||= []).push(r);
+  for (const [systemId, list] of Object.entries(bySystem)) {
+    const total = list.reduce((s, r) => s + r.n, 0);
+    const top = list.reduce((a, b) => (b.n > a.n ? b : a));
+    if (total < 3 || top.dates < 3 || top.n / total < 0.8) continue;
+    const when = DOW_PLURAL[top.dow] || `day ${top.dow}`;
+    out.set(systemId, {
+      text: `This pattern recurs on ${when}: ${top.n} time${top.n === 1 ? "" : "s"} across ${top.dates} separate ${when} in the last ${days} days, most recently ${top.last_ts.slice(0, 10)}.`,
+      evidence: { weekday: top.dow, weekday_name: when, occurrences: top.n, distinct_dates: top.dates,
+        total_matches: total, lookback_days: days, last_seen: top.last_ts },
+    });
+  }
+  return out;
+}
+
+// One concrete instance a human can go and look at, pulled straight from the
+// payload: the business identifier if the record has one, else the record.
+function exampleOf(hit) {
+  if (!hit) return null;
+  let p = {}; try { p = JSON.parse(hit.payload_json); } catch { return null; }
+  const d = (p.data && typeof p.data === "object") ? p.data : {};
+  const named = [
+    ["invoice", d.invoice_number], ["order", d.order_number ?? d.order_ref ?? p.order_ref],
+    ["customer", d.customer ?? p.customer], ["employee", p.employee], ["SKU", d.sku],
+  ].find(([, v]) => v !== undefined && v !== null && v !== "");
+  if (named) return `${named[0]} ${named[1]}`;
+  if (typeof p.message === "string" && p.message) return p.message.slice(0, 120);
+  if (p.table && p.record_id != null) return `${p.table} record ${p.record_id}`;
+  return null;
 }
 
 // Run all enabled rules; return findings for the scan to persist.
@@ -154,11 +256,18 @@ export function runRules(db, now = Date.now()) {
 // Dry-run a match spec against history: how often WOULD it have fired, with a
 // few real examples. This is the "buttah" gate before saving a rule.
 export function dryRun(db, match, days = 30, now = Date.now()) {
+  // A rule that watches for the ABSENCE of entries has no match count; saying
+  // "500 matches" for it (the old row-limit artefact) was just wrong.
+  if (match?.silence) return { would_fire: null, total_matches: null, days, silence: true, sample: [] };
   const windowMin = Number(match.window_minutes) || 1440;
   const sinceIso = new Date(now - days * 86400000).toISOString();
   const { sql, params } = buildWhere(db, match, sinceIso);
+  // The true total comes from COUNT(*), not from however many rows we chose to
+  // read: the badge on the Rules screen quotes this number, and a capped one
+  // made a rule matching 4,000 entries claim exactly 500, every time.
+  const total = db.prepare(`SELECT COUNT(*) AS n FROM log_entries WHERE ${sql}`).get(...params).n;
   const rows = db.prepare(
-    `SELECT system_id, action, ts_server, payload_json FROM log_entries WHERE ${sql} ORDER BY ts_server DESC LIMIT 500`
+    `SELECT system_id, action, ts_server, payload_json FROM log_entries WHERE ${sql} ORDER BY ts_server DESC LIMIT 2000`
   ).all(...params);
 
   const threshold = Number(match.count_gte) || 1;
@@ -169,11 +278,11 @@ export function dryRun(db, match, days = 30, now = Date.now()) {
     for (const r of rows) (byDay[r.ts_server.slice(0, 10)] ||= 0, byDay[r.ts_server.slice(0, 10)]++);
     fireCount = Object.values(byDay).filter((n) => n >= threshold).length;
   } else {
-    fireCount = rows.length;
+    fireCount = total;
   }
   return {
     would_fire: fireCount,
-    total_matches: rows.length,
+    total_matches: total,
     days,
     sample: rows.slice(0, 6).map((r) => {
       let who = null; try { who = JSON.parse(r.payload_json).account_name; } catch {}
@@ -221,6 +330,28 @@ export function listRules(db) {
   });
 }
 
+// The log entries a rule's match spec selects right now, newest first. The
+// firings list below only shows warnings a scan actually filed; a rule that has
+// never fired (or was authored after the last scan) still has to be able to show
+// its work, which is what this answers: "what does this rule actually match?"
+export function ruleMatches(db, match, { days = 30, limit = 25, now = Date.now() } = {}) {
+  if (match?.silence) return []; // silence is the absence of entries; nothing to list
+  const sinceIso = new Date(now - days * 86400000).toISOString();
+  const { sql, params } = buildWhere(db, match || {}, sinceIso);
+  return db.prepare(
+    `SELECT system_id, seq, action, ts_server, ts_client, payload_json FROM log_entries
+     WHERE ${sql} ORDER BY ts_server DESC LIMIT ${Math.min(Number(limit) || 25, 200)}`
+  ).all(...params).map((r) => {
+    let p = {}; try { p = JSON.parse(r.payload_json); } catch {}
+    return {
+      system_id: r.system_id, seq: r.seq, action: r.action,
+      ts: r.ts_client || r.ts_server,
+      who: p.account_name || p.data?.z_Modifier || null,
+      message: p.message || null, table: p.table || null, record_id: p.record_id ?? null,
+    };
+  });
+}
+
 // A rule's firings = warnings it produced (source "rule:<id>"), newest first,
 // with the sample matching entries it cited.
 export function ruleFirings(db, id) {
@@ -236,7 +367,7 @@ export function seedDefaultRules(db) {
   const defaults = [
     { name: "Logging went quiet", description: "A system that normally logs has gone silent, which usually means logging broke (a script change, a removed trigger, or a server offline).", severity: "warn", match: { silence: true } },
     { name: "Weekend activity", description: "Any changes made on a weekend.", severity: "info", match: { weekend: true } },
-    { name: "Mass deletion", description: "20 or more record deletions within an hour.", severity: "critical", class: "HIPAA", match: { action_like: "%.deleted", count_gte: 20, window_minutes: 60 } },
+    { name: "Mass deletion", description: "20 or more record deletions within an hour.", severity: "critical", match: { action_like: "%.deleted", count_gte: 20, window_minutes: 60 } },
     { name: "Big export", description: "An export of 1,000 or more records.", severity: "warn", match: { rows_gte: 1000 } },
   ];
   for (const d of defaults) createRule(db, { ...d, effect: "alert" });
@@ -244,6 +375,6 @@ export function seedDefaultRules(db) {
 
 function humanWindow(min) {
   if (min % 1440 === 0) { const d = min / 1440; return d === 1 ? "24 hours" : `${d} days`; }
-  if (min % 60 === 0) return `${min / 60} hours`;
+  if (min % 60 === 0) { const h = min / 60; return h === 1 ? "hour" : `${h} hours`; }
   return `${min} minutes`;
 }

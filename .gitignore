@@ -6,3 +6,4 @@ fly.toml
 *.db-shm
 *.db-wal
 .DS_Store
+demo/data/

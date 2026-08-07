@@ -5,11 +5,14 @@
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "author": "Matt Navarre (www.navarre.ai)",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js",
-    "setup": "node setup.mjs"
+    "setup": "node setup.mjs",
+    "sample": "node demo/generate.mjs"
   },
   "dependencies": {
     "express": "^4.21.2"

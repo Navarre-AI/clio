@@ -12,15 +12,34 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { openDb, openDbReadOnly } from "./db.js";
-import { appendBatch, head, verifyRange } from "./chain.js";
+import { appendBatch, head, verifyRange, entryHash, GENESIS } from "./chain.js";
 import { runScan, getPrefs } from "./scan.js";
 import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, setAIConfig, aiConfig, currentModel, MODELS, listModels } from "./ai.js";
-import { runRules, dryRun, createRule, listRules, updateRule, ruleFirings, seedDefaultRules } from "./rules.js";
+import { runRules, dryRun, createRule, listRules, updateRule, ruleFirings, ruleMatches, seedDefaultRules } from "./rules.js";
+import * as demoSession from "./demo/demosession.js";
+import { liveFor } from "./demo/demolive.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
-const SITE_PASSWORD = process.env.SITE_PASSWORD || "";
+
+// DEMO_MODE: the public read-only sandbox (Fly app clio-demo). One canned,
+// fictional dataset is baked into the image; the viewer opens straight into it
+// with no login and no key minting, and every write-shaped route refuses at the
+// route level (see demoReadOnly below) except a short allowlist of the routes
+// that make the product demonstrable (rules, warnings, ask), which are served
+// from per-visitor session state and never touch the shared dataset.
+// No admin token exists in the demo image, so it is forced off rather than
+// merely unset. AI is on when (and only when) a key is in the environment, with
+// a per-visitor prompt cap and a cheap model.
+const DEMO_MODE = process.env.DEMO_MODE === "1";
+const DEMO_AI_LIMIT = Number(process.env.DEMO_AI_LIMIT || 10);       // prompts per visitor
+const DEMO_AI_MODEL = process.env.DEMO_AI_MODEL || "claude-haiku-4-5"; // cheapest current model
+const DEMO_AI_MAX_TOKENS = Number(process.env.DEMO_AI_MAX_TOKENS || 1000);
+const DEMO_AI_MAX_HOPS = Number(process.env.DEMO_AI_MAX_HOPS || 4);
+const DEMO_LINK = process.env.DEMO_LINK || "https://www.navarre.ai";
+
+const ADMIN_TOKEN = DEMO_MODE ? "" : (process.env.ADMIN_TOKEN || "");
+const SITE_PASSWORD = DEMO_MODE ? "" : (process.env.SITE_PASSWORD || "");
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const MAX_BATCH = Number(process.env.MAX_BATCH || 500);
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
@@ -32,6 +51,15 @@ let dbRead = null; // opened lazily; the file must exist first
 function readHandle() { return (dbRead ||= openDbReadOnly(DB_PATH)); }
 
 // ---- helpers ----------------------------------------------------------------
+
+// AI is on wherever a key is present, demo included: "talk to your logs" is the
+// product, so a demo without it is not a demo. What the demo changes is the
+// blast radius, not the feature: the key comes from the environment only (never
+// baked into the image, never settable through the UI), the model is the cheap
+// one, answers are short, hops are few, and each visitor gets DEMO_AI_LIMIT
+// prompts (see askQuota). With no key the demo degrades to today's behavior and
+// says so honestly.
+const aiOn = () => aiAvailable();
 
 const sha256Hex = (s) => createHash("sha256").update(s, "utf8").digest("hex");
 
@@ -187,6 +215,114 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "25mb" })); // a Delete All / big Replace arrives as ONE OnWindowTransaction payload
 
+// ---- demo read-only gate ----------------------------------------------------
+// The demo's whole claim is that it cannot be written to, so enforcement lives
+// here, in front of every route, and not in the UI: it has to hold for someone
+// with curl, not just for someone clicking. Two rules, deliberately blunt:
+//   1. Only GET/HEAD/OPTIONS get through. That covers ingest (/v1/log, /v1/txn),
+//      warning acks, prefs, rules CRUD, scans, AI settings (including setting a
+//      key), notify-test, and the whole /api write surface, without depending on
+//      a route list that a later commit could forget to update.
+//   2. Nothing under /v1/admin at all, whatever the method: key minting,
+//      registration, archive, purge, and the admin reads that list keys.
+// A new write route added tomorrow is refused by rule 1 on the day it lands.
+// The one exception, added deliberately and enumerated exactly: the handful of
+// UI routes a visitor must be able to POST for the demo to demonstrate anything
+// (toggle/edit/dry-run a rule, dismiss a warning, ask the logs a question).
+// Every one of them is implemented against per-session state in DEMO_MODE
+// (demo/demosession.js) and writes nothing to the shared database, which is the
+// invariant test/demo.test.js checks from the outside. Anything not on this
+// list, and anything under /v1/admin, still refuses.
+const DEMO_INTERACTIVE = [
+  { method: "POST", re: /^\/api\/ask$/ },
+  { method: "POST", re: /^\/api\/rules$/ },
+  { method: "POST", re: /^\/api\/rules\/dry-run$/ },
+  { method: "PATCH", re: /^\/api\/rules\/[^/]+$/ },
+  { method: "DELETE", re: /^\/api\/rules\/[^/]+$/ },
+  { method: "POST", re: /^\/api\/warnings\/[^/]+\/ack$/ },
+  { method: "POST", re: /^\/api\/warnings\/ack-all$/ },
+];
+const demoInteractive = (req) =>
+  req.path !== "/api/rules/author" && // AI rule authoring stays off: not a demo path
+  DEMO_INTERACTIVE.some((r) => r.method === req.method && r.re.test(req.path));
+
+const DEMO_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+function demoReadOnly(req, res, next) {
+  const isAdminSurface = req.path === "/v1/admin" || req.path.startsWith("/v1/admin/");
+  if (isAdminSurface) return demoRefuse(req, res);
+  if (DEMO_READ_METHODS.has(req.method) || demoInteractive(req)) return next();
+  return demoRefuse(req, res);
+}
+function demoRefuse(req, res) {
+  return res.status(403).json({
+    ok: false,
+    error: "demo instance is read-only",
+    code: "demo_read_only",
+    request_id: res.locals.requestId,
+  });
+}
+
+// Per-visitor identity for the demo's session-scoped state. Server-side only:
+// the cookie carries a random id and nothing else, so a visitor cannot hand
+// themselves extra AI prompts or another visitor's rules by editing it. HttpOnly
+// so page scripts cannot read or forge it either.
+function demoSessionMw(req, res, next) {
+  const cookies = req.headers.cookie || "";
+  let sid = "";
+  for (const c of cookies.split(";")) {
+    const [k, ...v] = c.trim().split("=");
+    if (k === demoSession.COOKIE) { sid = decodeURIComponent(v.join("=")); break; }
+  }
+  if (!demoSession.validSessionId(sid)) {
+    sid = demoSession.newSessionId();
+    req.demoNew = true;
+    const secure = req.secure || req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+    res.append("Set-Cookie", `${demoSession.COOKIE}=${sid}; Path=/; Max-Age=21600; SameSite=Lax; HttpOnly${secure}`);
+  }
+  req.demoSid = sid;
+  next();
+}
+// The session state itself, created lazily so a crawler hitting one GET does not
+// allocate a bucket.
+const sess = (req) => demoSession.getSession(req.demoSid);
+
+// The visitor's own live trickle (demo/demolive.js): a minute of ambient activity
+// that starts when they arrive, chained onto the real head, held in their
+// session, merged into reads. Never written to the database.
+// A caller that did not present a cookie is not a visitor sitting on the page,
+// it is the first request of one (or a crawler): no trickle, so a bare curl sees
+// exactly the dataset and nothing else. The stream starts once the browser comes
+// back carrying the session it was given.
+const live = (req) => (DEMO_MODE && req.demoSid && !req.demoNew ? liveFor(db, sess(req)) : []);
+// The same word-start search the log feed does, applied to in-memory rows.
+function liveMatches(rows, q) {
+  const terms = String(q.q || "").trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
+  const bounds = terms.map((t) => new RegExp("\\b" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  const sysList = String(q.systems || "").split(",").filter(Boolean);
+  const actions = String(q.actions || "").split(",").filter(Boolean);
+  const sid = q.system_id ? String(q.system_id) : "";
+  return rows.filter((r) => {
+    if (sid && r.system_id !== sid) return false;
+    if (sysList.length && !sysList.includes(r.system_id)) return false;
+    if (actions.length && !actions.includes(r.action)) return false;
+    if (q.since && !(r.ts_server > String(q.since))) return false;
+    if (q.from && !(r.ts_server >= String(q.from))) return false;
+    if (q.to && !(r.ts_server < String(q.to))) return false;
+    if (q.until && !(r.ts_server < String(q.until))) return false;
+    if (q.action && r.action !== String(q.action)) return false;
+    if (q.category && r.category !== String(q.category)) return false;
+    if (q.person || q.actor) {
+      let p = {}; try { p = JSON.parse(r.payload_json); } catch {}
+      const whoIs = p.account_name || p.data?.z_Modifier || "";
+      if (whoIs !== String(q.person || q.actor)) return false;
+    }
+    if (bounds.length) { const hay = r.action + " " + r.payload_json; if (!bounds.every((re) => re.test(hay))) return false; }
+    return true;
+  });
+}
+
+if (DEMO_MODE) { app.use(demoSessionMw); app.use(demoReadOnly); }
+
 // Password gate for the UI surface only. Machine routes (/v1, /health) use
 // Bearer auth and must stay reachable by shippers and FileMaker scripts.
 if (SITE_PASSWORD) {
@@ -223,7 +359,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/v1/info", (_req, res) => {
-  res.json(ok({ name: "clio", version: VERSION, ai: aiAvailable() }));
+  res.json(ok({ name: "clio", version: VERSION, ai: aiOn(), demo: DEMO_MODE }));
 });
 
 // ---- ingest -----------------------------------------------------------------
@@ -588,7 +724,7 @@ async function pushAlerts(scanId) {
 async function doScan(force) {
   const result = await runScan(db, {
     force,
-    aiFindings: aiAvailable() ? aiFindings : null,
+    aiFindings: aiOn() ? aiFindings : null,
     ruleFindings: (now) => runRules(db, now),
   });
   if (!result.skipped) {
@@ -604,10 +740,14 @@ async function doScan(force) {
 // button, nothing manual.
 let watchTimer = null;
 function scheduleWatch() {
-  if (watchTimer) return;
+  if (DEMO_MODE || watchTimer) return;
   watchTimer = setTimeout(() => { watchTimer = null; doScan(true).catch(() => {}); }, 20000);
 }
-setInterval(() => doScan(true).catch(() => {}), 3600000); // hourly, for silence
+// The demo's dataset is frozen and its warnings were filed by a real scan when
+// it was generated. Re-scanning it can only add "this system went quiet" noise
+// (nothing has arrived since the data ends) and burn CPU on 100k rows at every
+// boot, so the watchdog stays parked in DEMO_MODE.
+if (!DEMO_MODE) setInterval(() => doScan(true).catch(() => {}), 3600000); // hourly, for silence
 
 // ---- rules ------------------------------------------------------------------
 
@@ -641,19 +781,62 @@ app.get("/api/actors", (_req, res) => {
   res.json({ actors: actorsCache.rows });
 });
 
-app.get("/api/rules", (_req, res) => res.json({ rules: listRules(db) }));
-app.get("/api/rules/:id/firings", (req, res) => res.json({ firings: ruleFirings(db, req.params.id) }));
+// In DEMO_MODE the rule list a visitor sees is the baseline rules with their own
+// session's edits layered on top; everywhere else it is just the table.
+const parseMatch = (s) => { try { return JSON.parse(s || "{}"); } catch { return {}; } };
+const wouldFire = (m) => { try { return dryRun(db, m, 30).would_fire; } catch { return null; } };
+
+function rulesFor(req) {
+  const base = listRules(db);
+  return DEMO_MODE ? demoSession.overlayRules(sess(req), base, wouldFire) : base;
+}
+function ruleFor(req, id) {
+  const row = db.prepare("SELECT * FROM rules WHERE id = ?").get(id);
+  const base = row ? { ...row, enabled: !!row.enabled, match: parseMatch(row.match_json) } : null;
+  return DEMO_MODE ? demoSession.overlayRule(sess(req), base, id) : base;
+}
+
+app.get("/api/rules", (req, res) => res.json({ rules: rulesFor(req) }));
+
+// What a rule has to show when you click it. Two different things, and the demo
+// made the difference obvious: `firings` are warnings a scan actually filed for
+// this rule, `matches` are the log entries the rule's spec selects right now.
+// A rule can legitimately have hundreds of matches and zero firings (nothing has
+// scanned since it was written, or its findings were all deduped), and showing
+// an empty panel in that case reads as broken.
+app.get("/api/rules/:id/firings", (req, res) => {
+  const rule = ruleFor(req, req.params.id);
+  let matches = [];
+  if (rule) { try { matches = ruleMatches(db, rule.match, { days: 30, limit: 25 }); } catch {} }
+  res.json({
+    firings: ruleFirings(db, req.params.id),
+    matches,
+    match_window_days: 30,
+    silence: Boolean(rule?.match?.silence),
+  });
+});
 
 app.post("/api/rules", (req, res) => {
   const r = req.body || {};
   if (!r.name || !r.match) return res.status(400).json({ error: "name and match required" });
+  if (DEMO_MODE) {
+    const rule = demoSession.createRule(sess(req), r);
+    return res.json({ ...rule, would_fire_30d: wouldFire(rule.match), demo_session_only: true });
+  }
   res.json(createRule(db, r));
 });
 
 app.patch("/api/rules/:id", (req, res) => {
+  if (DEMO_MODE) {
+    const base = ruleFor(req, req.params.id);
+    if (!base) return res.status(404).json({ error: "no such rule" });
+    demoSession.patchRule(sess(req), req.params.id, req.body || {}, base.match);
+    const rule = ruleFor(req, req.params.id);
+    return res.json({ ok: true, rule, demo_session_only: true });
+  }
   const body = { ...req.body };
   if (body.match_patch !== undefined) { // merge a partial into the existing match (e.g. just the files scope)
-    let cur = {}; try { cur = JSON.parse(db.prepare("SELECT match_json FROM rules WHERE id = ?").get(req.params.id)?.match_json || "{}"); } catch {}
+    const cur = parseMatch(db.prepare("SELECT match_json FROM rules WHERE id = ?").get(req.params.id)?.match_json);
     body.match = { ...cur, ...body.match_patch };
   }
   const rule = updateRule(db, req.params.id, body);
@@ -662,6 +845,7 @@ app.patch("/api/rules/:id", (req, res) => {
 });
 
 app.delete("/api/rules/:id", (req, res) => {
+  if (DEMO_MODE) { demoSession.deleteRule(sess(req), req.params.id); return res.json({ ok: true, demo_session_only: true }); }
   db.prepare("DELETE FROM rules WHERE id = ?").run(req.params.id);
   res.json({ ok: true });
 });
@@ -679,7 +863,7 @@ app.post("/api/rules/dry-run", (req, res) => {
 // (already dry-run) out.
 app.post("/api/rules/author", async (req, res) => {
   try {
-    if (!aiAvailable()) return res.json({ reply: "Set an Anthropic API key to author rules by chat. You can still add them by hand.", draft: null });
+    if (!aiOn()) return res.json({ reply: "Set an Anthropic API key to author rules by chat. You can still add them by hand.", draft: null });
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
     const { reply, draft } = await authorRule(messages, actionVocab());
     let preview = null;
@@ -694,11 +878,18 @@ app.post("/api/rules/author", async (req, res) => {
 
 // ---- AI settings ------------------------------------------------------------
 
-app.get("/api/ai", async (_req, res) => {
+app.get("/api/ai", async (req, res) => {
   const { models, fallback } = await listModels();
   const cfg = aiConfig();
-  res.json({ available: aiAvailable(), model: currentModel(), models, fallback,
-    thinking: cfg.thinking, speed: cfg.speed, key_set: cfg.key_override });
+  const body = { available: aiOn(), demo: DEMO_MODE, model: currentModel(), models, fallback,
+    thinking: cfg.thinking, speed: cfg.speed, key_set: cfg.key_override };
+  if (DEMO_MODE) {
+    const s = sess(req);
+    body.prompts_used = s.aiUsed;
+    body.prompts_limit = DEMO_AI_LIMIT;
+    body.link = DEMO_LINK;
+  }
+  res.json(body);
 });
 
 app.post("/api/ai", async (req, res) => {
@@ -897,9 +1088,13 @@ app.get("/api/overview", (req, res) => {
   const reg = systemsIndex();
   const chains = db.prepare("SELECT DISTINCT system_id FROM log_entries").all().map((r) => r.system_id);
   const ids = [...new Set([...Object.keys(reg), ...chains])];
-  const openCounts = Object.fromEntries(
-    db.prepare("SELECT system_id, COUNT(*) AS n FROM warnings WHERE status = 'open' GROUP BY system_id")
-      .all().map((r) => [r.system_id, r.n]));
+  const openRows = db.prepare("SELECT id, system_id FROM warnings WHERE status = 'open'").all();
+  const acked = DEMO_MODE ? sess(req).warningAcked : null; // this visitor's own dismissals
+  const openCounts = {};
+  for (const r of openRows) {
+    if (acked && acked.has(r.id)) continue;
+    openCounts[r.system_id] = (openCounts[r.system_id] || 0) + 1;
+  }
   const dayAgo = new Date(Date.now() - 86400000).toISOString();
   const todayCounts = Object.fromEntries(
     db.prepare("SELECT system_id, COUNT(*) AS n FROM log_entries WHERE COALESCE(NULLIF(ts_client,''), ts_server) >= ? GROUP BY system_id").all(dayAgo)
@@ -938,10 +1133,24 @@ app.get("/api/overview", (req, res) => {
     // Unfiled is the catch-all safety net: only worth showing once something has landed
     // in it. Empty = nothing was dropped, so don't clutter the list with it.
     .filter((s) => !(s.system_id === "unfiled" && (s.entry_count || 0) === 0));
+  // Fold the visitor's live trickle into the cards, so the counters tick up
+  // while they watch instead of the page quietly disagreeing with the feed.
+  if (DEMO_MODE) {
+    for (const r of live(req)) {
+      const s = systems.find((x) => x.system_id === r.system_id);
+      if (!s) continue;
+      s.entry_count = (s.entry_count || 0) + 1;
+      s.today = (s.today || 0) + 1;
+      s.seq = Math.max(s.seq || 0, r.seq);
+      if (!s.last_ts_server || r.ts_server > s.last_ts_server) s.last_ts_server = r.ts_server;
+    }
+  }
   systems.sort((a, b) => (a.label || a.system_id).localeCompare(b.label || b.system_id));
   // Unplaced files (any system) drive the new-database wizard.
   const unplaced = db.prepare("SELECT system_id, file_name, entry_count, last_seen FROM databases WHERE placed = 0 ORDER BY last_seen DESC").all();
-  res.json({ systems, ai: aiAvailable(), version: VERSION, unplaced, tagline: "FileMaker logging for the AI Age." });
+  res.json({ systems, ai: aiOn(), demo: DEMO_MODE, version: VERSION, unplaced,
+    ...(DEMO_MODE ? { demo_ai: { limit: DEMO_AI_LIMIT, used: sess(req).aiUsed, link: DEMO_LINK } } : {}),
+    tagline: "FileMaker logging for the AI Age." });
 });
 
 // Live push: the browser opens this once; every append writes an event and the
@@ -1026,9 +1235,22 @@ app.post("/api/databases/rename", (req, res) => {
 
 // With system_id: that chain, seq-cursor paging. Without: the live feed,
 // newest first across every system (poll with since=<last ts_server seen>).
+// Rows from the visitor's live trickle that belong in this query, newest first.
+// They are always the newest entries there are, so they go on the front.
+function liveRows(req) {
+  if (!DEMO_MODE) return [];
+  const rows = liveMatches(live(req), req.query);
+  return rows.slice().sort((a, b) => (a.ts_server < b.ts_server ? 1 : -1))
+    .map(({ prev_hash, entry_hash, event_id, ...r }) => r);
+}
+
 app.get("/api/logs", (req, res) => {
   const sid = String(req.query.system_id || "");
-  if (sid && !req.query.q) return res.json(queryLogs(sid, req.query));
+  if (sid && !req.query.q) {
+    const out = queryLogs(sid, req.query);
+    if (DEMO_MODE && !req.query.after_seq) out.entries = [...liveRows(req), ...out.entries];
+    return res.json(out);
+  }
   const where = []; const params = [];
   if (sid) { where.push("system_id = ?"); params.push(sid); }
   // Multi-select systems filter. With no explicit selection, Clio's own internal
@@ -1068,6 +1290,9 @@ app.get("/api/logs", (req, res) => {
   } else {
     rows = db.prepare(sql + ` LIMIT ${limit} OFFSET ${offset}`).all(...params);
   }
+  // The trickle is newer than anything in the database, so it rides on the front
+  // of the first page (and of every tail poll), and never disturbs paging.
+  if (DEMO_MODE && !offset) rows = [...liveRows(req), ...rows].slice(0, limit + 20);
   res.json({ entries: rows, latest_ts: rows.length && !offset ? rows[0].ts_server : (req.query.since || null) });
 });
 
@@ -1122,7 +1347,15 @@ app.get("/api/history", (req, res) => {
         last[f] = v;
       }
       const shown = field ? changes.filter((c) => c.field === field) : changes.filter((c) => !isHousekeeping(c.field));
-      if (shown.length || (!field && e.action.endsWith(".new"))) items.push({ seq: e.seq, system_id: e.system_id, ts: e.ts, who, action: e.action, changes: shown });
+      // Record mode is "this record's history": every logged event for the
+      // record belongs in it, whether or not a field-level diff can be computed.
+      // The FIRST entry for a record never has a diff (there is nothing before
+      // it to compare against), and a delete or a no-op edit may not either;
+      // dropping those made the timeline of any record whose earliest logged
+      // event was an edit come back empty, which reads as broken. With a field
+      // filter, only entries touching that field are wanted, so that still
+      // filters.
+      if (shown.length || !field) items.push({ seq: e.seq, system_id: e.system_id, ts: e.ts, who, action: e.action, changes: shown });
     }
     items.reverse(); // newest first for display
   } else {
@@ -1211,7 +1444,9 @@ async function buildPulse(total) {
     open_warnings: openWarnings,
   };
   let summary = "";
-  if (aiAvailable()) {
+  // The demo spends its AI budget on the thing visitors came for (asking the
+  // logs) and on warning wording. The pulse uses the deterministic sentence.
+  if (aiOn() && !DEMO_MODE) {
     try { summary = await pulseText(stats); } catch {}
   }
   if (!summary) {
@@ -1246,17 +1481,41 @@ app.get("/api/pulse", async (_req, res) => {
 app.get("/api/warnings", (req, res) => {
   const sys = req.query.system_id && String(req.query.system_id);
   // status=all → open + acknowledged (for "show acknowledged"); default open only
-  const status = req.query.status === "all" ? null : (req.query.status ? String(req.query.status) : "open");
-  res.json({ warnings: listWarnings(sys, status) });
+  const wantAll = req.query.status === "all";
+  const status = wantAll ? null : (req.query.status ? String(req.query.status) : "open");
+  let warnings = listWarnings(sys, DEMO_MODE ? null : status);
+  if (DEMO_MODE) {
+    // A visitor's dismissals live in their session, so the stored row still says
+    // "open" and the next visitor sees the demo intact. Apply the overlay here,
+    // then honor the status filter the client asked for.
+    const acked = sess(req).warningAcked;
+    warnings = warnings.map((w) => (acked.has(w.id) ? { ...w, status: "acknowledged" } : w));
+    if (status) warnings = warnings.filter((w) => w.status === status);
+  }
+  res.json({ warnings });
 });
 
 app.post("/api/warnings/:id/ack", (req, res) => {
+  if (DEMO_MODE) {
+    const exists = db.prepare("SELECT 1 AS x FROM warnings WHERE id = ?").get(req.params.id);
+    if (exists) sess(req).warningAcked.add(req.params.id);
+    return res.json({ acknowledged: Boolean(exists), demo_session_only: true });
+  }
   const r = db.prepare("UPDATE warnings SET status = 'acknowledged' WHERE id = ?").run(req.params.id);
   res.json({ acknowledged: Boolean(r.changes) });
 });
 // Acknowledge every open warning at once (optionally scoped to one system).
 app.post("/api/warnings/ack-all", (req, res) => {
   const sys = req.body?.system_id;
+  if (DEMO_MODE) {
+    const s = sess(req);
+    const rows = sys
+      ? db.prepare("SELECT id FROM warnings WHERE status = 'open' AND system_id = ?").all(String(sys))
+      : db.prepare("SELECT id FROM warnings WHERE status = 'open'").all();
+    let n = 0;
+    for (const r of rows) if (!s.warningAcked.has(r.id)) { s.warningAcked.add(r.id); n++; }
+    return res.json({ ok: true, acknowledged: n, demo_session_only: true });
+  }
   const r = sys
     ? db.prepare("UPDATE warnings SET status = 'acknowledged' WHERE status = 'open' AND system_id = ?").run(String(sys))
     : db.prepare("UPDATE warnings SET status = 'acknowledged' WHERE status = 'open'").run();
@@ -1266,7 +1525,11 @@ app.post("/api/warnings/ack-all", (req, res) => {
 app.get("/api/entry", (req, res) => {
   const sys = String(req.query.system_id || ""); const seq = Number(req.query.seq);
   if (!sys || !Number.isFinite(seq)) return res.status(400).json({ error: "system_id and seq required" });
-  const e = db.prepare("SELECT seq, system_id, ts_client, ts_server, category, action, payload_json FROM log_entries WHERE system_id = ? AND seq = ?").get(sys, seq);
+  let e = db.prepare("SELECT seq, system_id, ts_client, ts_server, category, action, payload_json FROM log_entries WHERE system_id = ? AND seq = ?").get(sys, seq);
+  if (!e && DEMO_MODE) {
+    const r = live(req).find((x) => x.system_id === sys && x.seq === seq);
+    if (r) { const { prev_hash, entry_hash, event_id, ...rest } = r; e = rest; }
+  }
   res.json({ entry: e || null });
 });
 
@@ -1274,6 +1537,20 @@ app.get("/api/verify", (req, res) => {
   const sid = String(req.query.system_id || "");
   if (!sid) return res.status(400).json({ error: "system_id required" });
   const result = verifyRange(db, sid);
+  // The live trickle is part of the chain, not decoration: continue the walk
+  // over the visitor's own entries and recompute their hashes the same way. If
+  // this ever disagreed, the demo would be claiming something it cannot show.
+  if (DEMO_MODE && result.valid) {
+    let prev = result.head.entry_hash || GENESIS;
+    let seq = result.head.seq;
+    for (const r of live(req).filter((x) => x.system_id === sid)) {
+      if (r.seq !== seq + 1 || r.prev_hash !== prev || entryHash(prev, r) !== r.entry_hash) {
+        result.valid = false; result.first_bad_seq = r.seq; break;
+      }
+      seq = r.seq; prev = r.entry_hash; result.checked++;
+      result.head = { seq, entry_hash: prev };
+    }
+  }
   if (!result.valid) selfLog("verify.failed", { system_id: sid, first_bad_seq: result.first_bad_seq });
   res.json(result);
 });
@@ -1286,14 +1563,46 @@ app.post("/api/scan", async (req, res) => {
   }
 });
 
+// Per-visitor prompt cap for the demo. Counted server-side, against the session
+// cookie, and spent BEFORE the model call, so a visitor cannot get free prompts
+// by aborting the request or by editing anything the browser can reach.
+function askQuota(req) {
+  if (!DEMO_MODE) return { ok: true };
+  const s = sess(req);
+  if (s.aiUsed >= DEMO_AI_LIMIT) return { ok: false, used: s.aiUsed, limit: DEMO_AI_LIMIT };
+  s.aiUsed++;
+  return { ok: true, used: s.aiUsed, limit: DEMO_AI_LIMIT };
+}
+
 app.post("/api/ask", async (req, res) => {
   try {
-    if (!aiAvailable()) {
-      return res.json({ reply: "The AI key isn't set, so I can't answer questions yet. Set ANTHROPIC_API_KEY.", artifacts: [] });
+    if (!aiOn()) {
+      return res.json({
+        reply: DEMO_MODE
+          ? "Ask the logs is unavailable right now: this demo runs on a spend-capped API key and one is not configured at the moment. Everything else here is live."
+          : "The AI key isn't set, so I can't answer questions yet. Set ANTHROPIC_API_KEY.",
+        artifacts: [],
+      });
     }
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
     if (!messages.length) return res.status(400).json({ error: "messages required" });
-    res.json(await askLogs(readHandle(), messages));
+    const quota = askQuota(req);
+    if (!quota.ok) {
+      return res.json({
+        reply: `That's all ${quota.limit} questions for this demo session. The full Clio has no cap: it answers from your own logs, on your own server. ${DEMO_LINK}`,
+        artifacts: [], quota_exhausted: true, prompts_used: quota.used, prompts_limit: quota.limit,
+      });
+    }
+    // The prompt is spent whether or not the model answers, so the counters ride
+    // on the failure path too: a visitor must never see "0 used" after a call
+    // that was, in fact, charged against their allowance.
+    const counters = DEMO_MODE ? { prompts_used: quota.used, prompts_limit: quota.limit } : {};
+    try {
+      const out = await askLogs(readHandle(), messages);
+      res.json({ ...out, ...counters });
+    } catch (e) {
+      res.status(200).json({ reply: "", error: String(e.message || e), ...counters });
+    }
   } catch (e) {
     res.status(200).json({ reply: "", error: String(e.message || e) });
   }
@@ -1310,10 +1619,21 @@ app.use((e, req, res, _next) => {
 });
 
 // Restore the saved AI model choice (Settings > AI persists it to meta).
-try { const m = metaGet("model"); if (m) setModel(m); } catch {}
-try { setAIConfig({ api_key: metaGet("ai_key") || undefined, thinking: metaGet("ai_thinking") ?? undefined, speed: metaGet("ai_speed") ?? undefined }); } catch {}
-// Warm the model list (non-blocking) so Settings opens instantly.
-setTimeout(() => { listModels().catch(() => {}); }, 3000);
+// Skipped entirely in the demo: a key stored in a database is still a key, and
+// the demo must not be able to acquire one from anywhere.
+if (!DEMO_MODE) {
+  try { const m = metaGet("model"); if (m) setModel(m); } catch {}
+  try { setAIConfig({ api_key: metaGet("ai_key") || undefined, thinking: metaGet("ai_thinking") ?? undefined, speed: metaGet("ai_speed") ?? undefined }); } catch {}
+  // Warm the model list (non-blocking) so Settings opens instantly.
+  setTimeout(() => { listModels().catch(() => {}); }, 3000);
+} else {
+  // Demo AI policy, fixed at boot and unreachable from any route: the cheapest
+  // current model, short answers, few hops, no thinking, no fast mode, and the
+  // key strictly from the environment (a key stored in the database is still a
+  // key, so the demo never reads or writes one).
+  setModel(DEMO_AI_MODEL);
+  setAIConfig({ thinking: "", speed: "", max_tokens: DEMO_AI_MAX_TOKENS, max_hops: DEMO_AI_MAX_HOPS });
+}
 // Seed sensible default rules on a fresh install (day one is useful).
 try { seedDefaultRules(db); } catch {}
 // Backfill the vocabulary shadow table once, so History's type filter works
@@ -1325,7 +1645,7 @@ try {
 } catch {}
 
 const server = app.listen(PORT, () => {
-  console.log(JSON.stringify({ level: "info", msg: `Clio listening on :${PORT}`, db: DB_PATH, ai: aiAvailable(), model: currentModel() }));
+  console.log(JSON.stringify({ level: "info", msg: `Clio listening on :${PORT}`, db: DB_PATH, ai: aiOn(), model: currentModel() }));
 });
 
 // Graceful shutdown: stop accepting, finish in-flight requests, close the DB

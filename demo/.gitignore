@@ -1,0 +1,4 @@
+# The generated demo DB is a committed artifact (the repo root ignores data/
+# and *.db; these negations re-include exactly the one file that matters).
+!data/
+!data/clio.db

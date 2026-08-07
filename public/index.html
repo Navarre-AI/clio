@@ -33,6 +33,9 @@
   .footbtn:hover { background:var(--panel); color:var(--ink); }
   .footinfo { color:var(--dim); font-size:11.5px; margin-top:6px; padding:0 8px; }
   .main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .demobar { display:flex; align-items:center; gap:9px; padding:9px 26px; font-size:12.5px; background:var(--offbg); color:var(--muted); border-bottom:1px solid var(--line); }
+  .demobar b { color:var(--ink); font-weight:600; }
+  .demobar .dot { width:7px; height:7px; border-radius:50%; background:var(--gold); flex:none; }
   .main-head { display:flex; align-items:center; gap:12px; padding:18px 26px 14px; border-bottom:1px solid var(--line); }
   .main-head .title { font-family:var(--serif); font-size:24px; font-weight:600; }
   .main-head .sub { color:var(--muted); font-size:13px; }
@@ -94,7 +97,7 @@
   .badge { display:inline-block; border-radius:12px; padding:1px 9px; font-size:11.5px; font-weight:600; }
   .b-ok { background:var(--goodbg); color:var(--good); } .b-bad { background:var(--critbg); color:var(--critc); }
   .b-warn { background:var(--warnbg); color:var(--warnc); } .b-info { background:var(--panel2); color:var(--muted); }
-  .b-critical { background:var(--critbg); color:var(--critc); } .b-hipaa { background:#efe3f5; color:#7a3ea0; } html.dark .b-hipaa { background:#2e2440; color:#c9a6e6; }
+  .b-critical { background:var(--critbg); color:var(--critc); } .b-class { background:#efe3f5; color:#7a3ea0; } html.dark .b-class { background:#2e2440; color:#c9a6e6; }
   .warning { display:flex; gap:12px; align-items:flex-start; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px 15px; margin-bottom:9px; box-shadow:var(--shadow); }
   .warning.click { cursor:pointer; } .warning.click:hover { border-color:var(--accent2); }
   .warning .body { flex:1; } .warning .title { font-weight:600; } .warning .detail { font-size:13px; color:var(--muted); margin-top:2px; } .warning .src { font-size:10.5px; color:var(--dim); }
@@ -148,6 +151,7 @@
 </aside>
 
 <main class="main">
+  <div class="demobar" id="demoBanner" style="display:none"></div>
   <div class="main-head"><span class="title" id="viewTitle">Systems</span><span class="sub" id="viewSub"></span><div class="right" id="viewActions"></div></div>
 
   <div class="view on" id="v-systems"><div class="wrap wide">
@@ -161,7 +165,7 @@
       <div class="pulsebar"><svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div><div class="ptext" id="pulseText">Reading the room…</div><div class="pmeta" id="pulseMeta"></div></div></div>
       <div id="thread"></div>
     </div>
-    <div class="composer"><div class="inner"><textarea id="askInput" placeholder="Who deleted invoices this week? Any weekend logins?"></textarea><button class="sendbtn" id="askBtn">Ask</button></div></div>
+    <div class="composer"><div class="inner"><textarea id="askInput" placeholder="Who deleted invoices this week? Any weekend logins?"></textarea><button class="sendbtn" id="askBtn">Ask</button></div><div class="quiet" id="askQuota" style="display:none;text-align:center;padding:6px 0 0"></div></div>
   </div>
 
   <div class="view" id="v-log"><div class="wrap wide">
@@ -256,8 +260,8 @@ function go(v) {
   document.querySelectorAll(".navitem").forEach((x) => x.classList.toggle("on", x.dataset.v===v));
   document.querySelectorAll(".view").forEach((x) => x.classList.toggle("on", x.id==="v-"+v));
   const [t,s]=TITLES[v]; $("viewTitle").textContent=t; $("viewSub").textContent=s;
-  $("viewActions").innerHTML = v==="rules" ? '<button class="btn sm" id="newRuleBtn2">+ New rule</button>' : "";
-  if(v==="rules"){ $("newRuleBtn2").onclick=openRuleModal; loadRules(); }
+  $("viewActions").innerHTML = (v==="rules") ? '<button class="btn sm" id="newRuleBtn2">+ New rule</button>' : "";
+  if(v==="rules"){ if($("newRuleBtn2")) $("newRuleBtn2").onclick=openRuleModal; loadRules(); }
   if(v==="log"){ renderLog(); }
 }
 document.querySelectorAll(".navitem").forEach((n) => n.onclick = () => go(n.dataset.v));
@@ -307,9 +311,29 @@ const sysName=(id)=>(ov.systems.find((s)=>s.system_id===id)||{}).label||id;
 
 // ---- systems (landing) ----
 let ov = { systems:[], unplaced:[] };
+
+// Read-only demo (DEMO_MODE on the server). The server refuses every write on
+// its own; this just stops the UI from offering buttons that can only fail.
+let DEMO=false, demoApplied=false, DEMO_AI=null;
+function applyDemo(){ if(demoApplied)return; demoApplied=true; DEMO=true;
+  const b=$("demoBanner"); b.style.display="";
+  b.innerHTML=`<span class="dot"></span><span><b>Read-only demo.</b> Every log entry here is fictional, generated for two made-up companies. The log itself cannot be changed. Rules and warnings are yours to play with: your toggles, edits and dismissals last for your visit and reset for the next person.</span>`;
+  const add=$("addSystemBtn"); if(add) add.style.display="none";
+  if(!ov.ai){ const ask=document.querySelector("#v-ask .composer");
+    if(ask) ask.innerHTML=`<div class="inner"><div class="quiet" style="text-align:center;width:100%">Ask the logs is unavailable right now: this demo runs on a spend-capped API key and one is not configured at the moment. The pulse above, the warnings, and the whole log are real reads of the demo data.</div></div>`; }
+  // Settings still opens (it is worth seeing) but nothing in it can be saved.
+  for(const id of ["chSlack","chSave","chTest","aiModel","aiThinking","aiFast","aiKey"]){ const e=$(id); if(e) e.disabled=true; }
+}
+// "3 of 10 questions used" under the Ask box, so the cap is never a surprise.
+function renderQuota(){ if(!DEMO||!DEMO_AI||!ov.ai)return; const el=$("askQuota"); if(!el)return;
+  const left=Math.max(0,DEMO_AI.limit-DEMO_AI.used);
+  el.innerHTML=left?`${left} of ${DEMO_AI.limit} demo questions left`:`Demo questions used up. <a href="${esc(DEMO_AI.link||"https://www.navarre.ai")}" style="color:var(--accent2)">Talk to Matt about running Clio on your own logs</a>.`;
+  el.style.display=""; }
+
 async function loadOverview() {
   ov = await j("/api/overview");
-  $("footInfo").textContent = `v${ov.version} · AI ${ov.ai?"on":"off"}`;
+  if(ov.demo){ if(ov.demo_ai) DEMO_AI=ov.demo_ai; applyDemo(); renderQuota(); }
+  $("footInfo").textContent = ov.demo ? `v${ov.version} · read-only demo` : `v${ov.version} · AI ${ov.ai?"on":"off"}`;
   $("aboutBox").innerHTML = ABOUT;
   if($("lgSysPop")) buildLogFilters();
   $("wizardBanner").innerHTML = (ov.unplaced&&ov.unplaced.length)
@@ -330,21 +354,27 @@ async function openSystem(sid) {
   const logs = await j("/api/logs?system_id="+encodeURIComponent(sid)+"&limit=6").catch(()=>({entries:[]}));
   const s = ov.systems.find((x)=>x.system_id===sid) || { system_id:sid, databases:[] };
   const files=(s.databases||[]).filter((d)=>d.placed);
-  const fileRows = files.length ? files.map((d)=>{const fsid=d.system_id||sid;return `<div class="dbrow"><input class="input" style="padding:5px 9px" value="${esc(d.name)}" onchange="renameFile('${esc(fsid)}','${esc(d.file_name)}',this.value)"><span class="dbc">${fmtN(d.entry_count)} entries${d.linked?" · linked":""}</span><button class="link" onclick="unlinkFile('${esc(fsid)}','${esc(d.file_name)}')">unlink</button></div>`;}).join("") : '<div class="quiet">No files yet.</div>';
+  const fileRows = files.length ? files.map((d)=>{const fsid=d.system_id||sid;return DEMO
+      ? `<div class="dbrow"><span style="flex:1;font-weight:600">${esc(d.name)}</span><span class="dbc">${fmtN(d.entry_count)} entries${d.linked?" · linked":""}</span></div>`
+      : `<div class="dbrow"><input class="input" style="padding:5px 9px" value="${esc(d.name)}" onchange="renameFile('${esc(fsid)}','${esc(d.file_name)}',this.value)"><span class="dbc">${fmtN(d.entry_count)} entries${d.linked?" · linked":""}</span><button class="link" onclick="unlinkFile('${esc(fsid)}','${esc(d.file_name)}')">unlink</button></div>`;}).join("") : '<div class="quiet">No files yet.</div>';
   const tail = (logs.entries||[]).map((e)=>{let p={};try{p=JSON.parse(e.payload_json);}catch{} const c=crud(e.action,p),h=humanLine(e); return `<div class="row" style="box-shadow:none"><span class="t">${localHM(e.ts_server)}</span><span class="tag ${c.cls}">${c.tag}</span><span class="main">${h.who?esc(h.who)+" ":""}<span class="did">${esc(redact(h.text))}</span></span></div>`;}).join("") || '<div class="quiet">No entries yet.</div>';
   const TZ=[["","(not set)"],["-8","Pacific (UTC-8)"],["-5","Eastern (UTC-5)"],["0","UTC"],["1","London/CET (UTC+1)"],["3","Athens/Crete (UTC+3)"]];
-  modal(s.label||sid, `
+  const nameCard = DEMO ? `
+    <div class="scard"><div class="scard-h">Name &amp; server</div>
+      <div class="setrow"><label>Name</label><span>${esc(s.label||sid)}</span></div>
+      <div class="setrow"><label>FileMaker server</label><span>${esc(s.fm_server||"–")}</span></div></div>` : `
     <div class="scard"><div class="scard-h">Name &amp; server <span class="sub" id="sysMsg"></span></div>
       <div class="field"><span>Name</span><input class="input" id="sysLabel" value="${esc(s.label||"")}" placeholder="${esc(sid)}" onchange="saveSystem('${esc(sid)}')"></div>
       <div class="field"><span>FileMaker server</span><input class="input" id="sysServer" value="${esc(s.fm_server||"")}" onchange="saveSystem('${esc(sid)}')"></div>
       <div class="field"><span>Time zone</span><select class="input" id="sysTz" onchange="saveSystem('${esc(sid)}')">${TZ.map(([v,l])=>`<option value="${v}" ${String(s.tz_offset??"")===v?"selected":""}>${l}</option>`).join("")}</select></div>
-      <div class="setrow"><span class="toggle ${s.display?"on":""}" id="sysDisp" onclick="this.classList.toggle('on');saveSystem('${esc(sid)}')"><span class="knob"></span></span><span style="width:auto">Show in Systems</span></div></div>
+      <div class="setrow"><span class="toggle ${s.display?"on":""}" id="sysDisp" onclick="this.classList.toggle('on');saveSystem('${esc(sid)}')"><span class="knob"></span></span><span style="width:auto">Show in Systems</span></div></div>`;
+  modal(s.label||sid, `${nameCard}
     <div class="scard" style="margin-top:12px"><div class="scard-h">Database files</div>${fileRows}</div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Log</div>
       <div class="setrow"><label>Entries</label><span>${fmtN(s.entry_count||0)}</span></div>
       <div class="setrow"><label>Status</label><span class="badge b-info" id="verStatus">checking…</span></div></div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Recent activity <span class="sub">(values redacted)</span></div><div class="feed">${tail}</div></div>
-    <div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div><div class="setrow"><button class="btn ghost sm" onclick="archiveSystem('${esc(sid)}')">Archive log</button><button class="link danger" onclick="purgeSystem('${esc(sid)}')">Delete all records…</button></div><div id="sysDanger"></div></div>`);
+    ${DEMO?"":`<div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div><div class="setrow"><button class="btn ghost sm" onclick="archiveSystem('${esc(sid)}')">Archive log</button><button class="link danger" onclick="purgeSystem('${esc(sid)}')">Delete all records…</button></div><div id="sysDanger"></div></div>`}`);
   // background chain verify: fills the badge once done, never blocks the modal
   j("/api/verify?system_id="+encodeURIComponent(sid)).then((ver)=>{ const el=$("verStatus"); if(!el)return; el.className="badge "+(ver.valid?"b-ok":"b-bad"); el.textContent=ver.valid?"Verified ✓":("Problem at #"+ver.first_bad_seq); }).catch(()=>{ const el=$("verStatus"); if(el){ el.className="badge b-info"; el.textContent="check unavailable"; } });
 }
@@ -409,7 +439,8 @@ function artifactHtml(a){
   return "";
 }
 function renderThread(){ $("thread").innerHTML=askMessages.map((m)=>m.role==="user"?`<div class="msg user">${esc(m.content)}</div>`:`<div class="msg bot">${renderMd(m.content)}${(m.artifacts||[]).map(artifactHtml).join("")}</div>`).join(""); $("thread").lastElementChild?.scrollIntoView({block:"end"}); }
-async function askSend(){ const q=$("askInput").value.trim(); if(!q)return; $("askInput").value=""; askMessages.push({role:"user",content:q}); renderThread(); $("thread").insertAdjacentHTML("beforeend",`<div class="msg meta" id="thinking">reading the logs…</div>`); const r=await post("/api/ask",{messages:askMessages.map((m)=>({role:m.role,content:m.content}))}); $("thinking")?.remove(); askMessages.push({role:"assistant",content:r.error?("Something went wrong: "+r.error):(r.reply||"…"),artifacts:r.artifacts||[]}); renderThread(); }
+async function askSend(){ const q=$("askInput").value.trim(); if(!q)return; $("askInput").value=""; askMessages.push({role:"user",content:q}); renderThread(); $("thread").insertAdjacentHTML("beforeend",`<div class="msg meta" id="thinking">reading the logs…</div>`); const r=await post("/api/ask",{messages:askMessages.map((m)=>({role:m.role,content:m.content}))}); $("thinking")?.remove(); askMessages.push({role:"assistant",content:r.error?("Something went wrong: "+r.error):(r.reply||"…"),artifacts:r.artifacts||[]}); renderThread();
+  if(DEMO&&r.prompts_limit){ DEMO_AI={limit:r.prompts_limit,used:r.prompts_used,link:DEMO_AI?.link}; renderQuota(); } }
 $("askBtn").onclick=askSend; $("askInput").onkeydown=(e)=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askSend();}};
 async function pollPulse(){ try{ const p=await j("/api/pulse"); if(p.summary){ $("pulseText").textContent=p.summary; $("pulseMeta").textContent=`${p.stats.events_last_24h} events / 24h · ${p.stats.open_warnings} open`; } }catch{} }
 async function pollRejects(){ try{ const {rejects}=await j("/api/rejects"); if(!rejects||!rejects.length){ $("rejectBanner").innerHTML=""; return; } const recent=rejects.slice(0,4).map((r)=>`<div style="font-size:12px">${localTime(r.ts)} · <b>${esc(r.code)}</b> · ${esc(r.message||"")}</div>`).join(""); $("rejectBanner").innerHTML=`<div class="banner bad"><div style="display:flex;align-items:center;width:100%;gap:10px"><b>${rejects.length} rejected post${rejects.length===1?"":"s"}</b>, refused (usually a wrong API key or URL)<button class="btn ghost sm" style="margin-left:auto" onclick="ackRejects()">Acknowledge</button></div>${recent}</div>`; }catch{} }
@@ -534,36 +565,78 @@ async function recordHistory(system,table,record_id){
 
 // ---- Rules ----
 async function loadRules(){ const {rules}=await j("/api/rules");
-  $("rulesList").innerHTML=rules.length?rules.map((r)=>`<div class="warning click" onclick="openRule('${r.id}')"><span class="toggle ${r.enabled?"on":""}" onclick="event.stopPropagation();toggleRule('${r.id}',${r.enabled?0:1})"><span class="knob"></span></span><div class="body"><div class="title">${esc(r.name)} <span class="badge b-${esc(r.severity)}">${esc(r.severity)}</span> ${r.class?`<span class="badge b-hipaa">${esc(r.class)}</span>`:""}</div><div class="detail">${esc(r.description)}</div><div class="src">fired ${r.would_fire_30d??"–"}× in 30 days</div></div></div>`).join(""):'<div class="quiet">No rules yet. Click "New rule".</div>'; }
+  $("rulesList").innerHTML=rules.length?rules.map((r)=>`<div class="warning click" onclick="openRule('${r.id}')"><span class="toggle ${r.enabled?"on":""}" onclick="event.stopPropagation();toggleRule('${r.id}',${r.enabled?0:1})"><span class="knob"></span></span><div class="body"><div class="title">${esc(r.name)} <span class="badge b-${esc(r.severity)}">${esc(r.severity)}</span> ${r.class?`<span class="badge b-class">${esc(r.class)}</span>`:""}</div><div class="detail">${esc(r.description)}</div><div class="src">${r.match&&r.match.silence?"watches for silence, not for entries":`matches ${fmtN(r.would_fire_30d??0)} entr${r.would_fire_30d===1?"y":"ies"} in the last 30 days`}${r.session_only?" · yours for this visit":""}</div></div></div>`).join(""):'<div class="quiet">No rules yet. Click "New rule".</div>'; }
 async function toggleRule(id,on){ await j("/api/rules/"+id,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({enabled:!!on})}); loadRules(); }
 async function delRule(id){ if(!confirm("Delete this rule?"))return; await j("/api/rules/"+id,{method:"DELETE"}); closeModal(); loadRules(); }
-async function openRule(id){ const [{rules},{firings}]=await Promise.all([j("/api/rules"),j("/api/rules/"+id+"/firings")]); const r=rules.find(x=>x.id===id); if(!r)return;
-  const fire = firings.length? firings.map((f)=>`<div class="warning" style="box-shadow:none"><span class="badge b-${esc(f.severity)}">${esc(f.severity)}</span><div class="body"><div class="detail">${esc(f.detail)}</div><div class="src">${esc(f.system_id)} · ${esc(localTime(f.created_at))}</div></div></div>`).join("") : '<div class="quiet">Not fired yet.</div>';
+async function openRule(id){ const [{rules},fr]=await Promise.all([j("/api/rules"),j("/api/rules/"+id+"/firings")]); const r=rules.find(x=>x.id===id); if(!r)return;
+  const firings=fr.firings||[], matches=fr.matches||[];
+  const fire = firings.length? firings.map((f)=>`<div class="warning" style="box-shadow:none"><span class="badge b-${esc(f.severity)}">${esc(f.severity)}</span><div class="body"><div class="detail">${esc(f.detail)}</div><div class="src">${esc(sysName(f.system_id))} · ${esc(localTime(f.created_at))}</div></div></div>`).join("")
+    : `<div class="quiet">This rule has not produced a warning yet.${matches.length?" The entries it matches are below.":""}</div>`;
+  // What the rule actually selects right now. A rule that says "matches 500
+  // entries" and then shows nothing when you click it is the single most
+  // confusing thing the old screen did.
+  const hits = fr.silence
+    ? '<div class="quiet">This rule watches for the ABSENCE of entries, so there is nothing to list.</div>'
+    : (matches.length? matches.map((m)=>`<div class="row" ${m.seq!=null?`onclick="openHistoryEntry('${esc(m.system_id)}',${m.seq})" style="cursor:pointer;box-shadow:none"`:'style="box-shadow:none"'}><span class="t" style="width:120px">${esc(localTime(m.ts))}</span><span class="sys">${esc(m.who||"")}</span><div class="main">${esc(m.message||friendlyAction(m.action))}${m.table?` · ${esc(m.table)}${m.record_id!=null?" #"+esc(String(m.record_id)):""}`:""}</div></div>`).join("")
+      : '<div class="quiet">Nothing in the last 30 days matches this rule.</div>');
   modal(r.name,`
     <div class="scard"><div class="scard-h">Rule</div>
       <div class="field"><span>Name</span><input class="input" id="erName" value="${esc(r.name)}"></div>
       <div class="field"><span>Description</span><textarea class="input" id="erDesc" rows="2">${esc(r.description)}</textarea></div>
-      <div class="frow"><div class="field"><span>Severity</span><select class="input" id="erSev">${["info","warn","critical"].map(s=>`<option ${r.severity===s?"selected":""}>${s}</option>`).join("")}</select></div><div class="field"><span>Class (optional)</span><input class="input" id="erClass" value="${esc(r.class||"")}" placeholder="e.g. HIPAA"></div></div>
+      <div class="frow"><div class="field"><span>Severity</span><select class="input" id="erSev">${["info","warn","critical"].map(s=>`<option ${r.severity===s?"selected":""}>${s}</option>`).join("")}</select></div><div class="field"><span>Class (optional)</span><input class="input" id="erClass" value="${esc(r.class||"")}" placeholder="e.g. Finance"></div></div>
       <div class="setrow"><button class="btn sm" onclick="saveRule('${id}')">Save</button><button class="btn ghost sm" onclick="closeModal()">Cancel</button><button class="link danger" style="margin-left:auto" onclick="delRule('${id}')">delete rule</button><span class="quiet" id="erMsg" style="padding:0"></span></div></div>
-    <div class="scard" style="margin-top:12px"><div class="scard-h">Triggered <span class="sub">${firings.length} time${firings.length===1?"":"s"}</span></div>${fire}</div>`);
+    <div class="scard" style="margin-top:12px"><div class="scard-h">Warnings this rule filed <span class="sub">${firings.length}</span></div>${fire}</div>
+    <div class="scard" style="margin-top:12px"><div class="scard-h">What it matches <span class="sub">most recent, last ${fr.match_window_days||30} days</span></div><div class="feed">${hits}</div></div>`);
 }
 async function saveRule(id){ const r=await(await fetch(api("/api/rules/"+id),{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({name:$("erName").value.trim(),description:$("erDesc").value.trim(),severity:$("erSev").value,class:$("erClass").value.trim()||null})})).json(); $("erMsg").textContent="Saved."; loadRules(); }
 
 // rule creation modal: shows the created rule after save
 let ruleMessages=[],pendingDraft=null;
 function renderRuleThread(){ $("ruleThread").innerHTML=ruleMessages.map((m)=>m.role==="user"?`<div class="msg user" style="max-width:100%">${esc(m.content)}</div>`:`<div class="msg bot" style="max-width:100%">${renderMd(m.content)}</div>`).join(""); $("ruleThread").lastElementChild?.scrollIntoView({block:"end"}); }
-function openRuleModal(){ ruleMessages=[];pendingDraft=null;$("ruleDraft").innerHTML="";$("ruleInput").value="";$("ruleAskRow").style.display="flex";$("ruleModalTitle").textContent="New rule";renderRuleThread(); $("ruleModal").classList.add("open"); setTimeout(()=>$("ruleInput").focus(),50); }
+function openRuleModal(){ ruleMessages=[];pendingDraft=null;$("ruleDraft").innerHTML="";$("ruleInput").value="";$("ruleModalTitle").textContent="New rule";
+  if(DEMO){ // the demo writes rules by hand: the conversational author is the one
+            // AI surface this sandbox deliberately leaves off.
+    $("ruleAskRow").style.display="none"; $("ruleThread").innerHTML=demoRuleForm();
+  } else { $("ruleAskRow").style.display="flex"; renderRuleThread(); }
+  $("ruleModal").classList.add("open"); setTimeout(()=>{ const el=DEMO?$("nrName"):$("ruleInput"); if(el)el.focus(); },50); }
+
+// A plain rule builder for the demo: the same match spec the engine runs, with
+// the dry run wired up so you can see what it would catch before you save it.
+function demoRuleForm(){ return `<div class="scard"><div class="scard-h">Describe the rule</div>
+  <div class="field"><span>Name</span><input class="input" id="nrName" placeholder="Deleted invoices"></div>
+  <div class="field"><span>What it catches</span><input class="input" id="nrDesc" placeholder="An invoice was deleted after it was paid"></div>
+  <div class="frow"><div class="field"><span>Severity</span><select class="input" id="nrSev"><option>info</option><option selected>warn</option><option>critical</option></select></div>
+    <div class="field"><span>Action pattern</span><input class="input" id="nrAction" placeholder="%.deleted   or   %login%"></div></div>
+  <div class="frow"><div class="field"><span>Fire at this many matches</span><input class="input" id="nrCount" type="number" min="1" value="1"></div>
+    <div class="field"><span>Within (minutes)</span><input class="input" id="nrWindow" type="number" min="5" value="1440"></div></div>
+  <div class="setrow"><label class="quiet" style="padding:0"><input type="checkbox" id="nrOff"> outside business hours</label>
+    <label class="quiet" style="padding:0"><input type="checkbox" id="nrWeekend"> weekends only</label></div>
+  <div class="setrow" style="margin-top:10px"><button class="btn ghost sm" onclick="demoRuleDry()">Dry-run it</button><button class="btn sm" onclick="demoRuleSave()">Save rule</button><span class="quiet" id="nrMsg" style="padding:0"></span></div>
+  <div class="hint" style="margin-top:8px">In this demo the rule is yours for this visit only: it is not written to the shared dataset.</div></div>`; }
+function demoRuleSpec(){ const m={};
+  const a=$("nrAction").value.trim(); if(a) m.action_like=a;
+  if($("nrOff").checked) m.off_hours=true;
+  if($("nrWeekend").checked) m.weekend=true;
+  const c=Number($("nrCount").value)||1; if(c>1){ m.count_gte=c; m.window_minutes=Number($("nrWindow").value)||1440; }
+  return { name:$("nrName").value.trim()||"Untitled rule", description:$("nrDesc").value.trim(), severity:$("nrSev").value, effect:"alert", match:m }; }
+async function demoRuleDry(){ const spec=demoRuleSpec(); $("nrMsg").textContent="Checking…";
+  const r=await post("/api/rules/dry-run",{match:spec.match,days:30});
+  if(r.error){ $("nrMsg").textContent=r.error; return; }
+  $("nrMsg").textContent="";
+  $("ruleDraft").innerHTML=`<div class="scard" style="margin-top:12px;border-color:var(--accent2)"><div class="scard-h">Dry run <span class="sub">last ${r.days} days</span></div><div style="font-weight:600">${fmtN(r.total_matches)} matching entr${r.total_matches===1?"y":"ies"}, would have fired ${fmtN(r.would_fire)} time${r.would_fire===1?"":"s"}</div><div class="feed" style="margin-top:8px">${(r.sample||[]).map(s=>`<div class="row" style="box-shadow:none"><span class="t" style="width:120px">${esc(localTime(s.ts))}</span><span class="sys">${esc(s.who||"")}</span><div class="main">${esc(friendlyAction(s.action))}</div></div>`).join("")||'<div class="quiet">No matches.</div>'}</div></div>`; }
+async function demoRuleSave(){ const spec=demoRuleSpec(); if(!spec.name||!Object.keys(spec.match).length){ $("nrMsg").textContent="Give it a name and at least one condition."; return; }
+  const saved=await post("/api/rules",spec); $("ruleModal").classList.remove("open"); loadRules(); go("rules"); }
 $("ruleModalClose").onclick=()=>{$("ruleModal").classList.remove("open");loadRules();};
 // no backdrop-close: editing modals close only via ✕ or Escape (avoids losing work on a stray click)
 async function ruleAsk(){ const q=$("ruleInput").value.trim(); if(!q)return; $("ruleInput").value="";ruleMessages.push({role:"user",content:q});renderRuleThread(); const r=await post("/api/rules/author",{messages:ruleMessages}); if(r.error){ruleMessages.push({role:"assistant",content:"Error: "+r.error});renderRuleThread();return;} ruleMessages.push({role:"assistant",content:r.reply||"…"});renderRuleThread(); if(r.draft)showDraft(r.draft,r.preview); }
 $("ruleAsk").onclick=ruleAsk; $("ruleInput").onkeydown=(e)=>{if(e.key==="Enter")ruleAsk();};
 function showDraft(draft,preview){ pendingDraft=draft; const fired=preview?`Would have fired <b>${preview.would_fire}</b> time${preview.would_fire===1?"":"s"} in the last ${preview.days} days.`:"";
-  $("ruleDraft").innerHTML=`<div class="scard" style="margin-top:12px;border-color:var(--accent2)"><div class="scard-h">Proposed rule</div><div style="font-weight:600">${esc(draft.name)} <span class="badge b-${esc(draft.severity)}">${esc(draft.severity)}</span> ${draft.class?`<span class="badge b-hipaa">${esc(draft.class)}</span>`:""}</div><div style="font-size:13px;color:var(--muted);margin:4px 0 8px">${esc(draft.description)}</div><div class="hint">${fired}</div><div class="setrow" style="margin-top:10px"><button class="btn" id="ruleSaveBtn">Save</button><button class="btn ghost" id="ruleCancelBtn">Cancel</button></div></div>`;
+  $("ruleDraft").innerHTML=`<div class="scard" style="margin-top:12px;border-color:var(--accent2)"><div class="scard-h">Proposed rule</div><div style="font-weight:600">${esc(draft.name)} <span class="badge b-${esc(draft.severity)}">${esc(draft.severity)}</span> ${draft.class?`<span class="badge b-class">${esc(draft.class)}</span>`:""}</div><div style="font-size:13px;color:var(--muted);margin:4px 0 8px">${esc(draft.description)}</div><div class="hint">${fired}</div><div class="setrow" style="margin-top:10px"><button class="btn" id="ruleSaveBtn">Save</button><button class="btn ghost" id="ruleCancelBtn">Cancel</button></div></div>`;
   $("ruleCancelBtn").onclick=()=>{$("ruleModal").classList.remove("open");loadRules();};
   $("ruleSaveBtn").onclick=async()=>{ const res=await post("/api/rules",pendingDraft); const saved=res.name?res:pendingDraft;
     // show the actual saved rule, never "describe another"
     $("ruleAskRow").style.display="none"; $("ruleThread").innerHTML=""; $("ruleModalTitle").textContent="Rule created";
-    $("ruleDraft").innerHTML=`<div class="scard" style="border-color:var(--good)"><div class="scard-h" style="color:var(--good)">✓ Saved</div><div style="font-weight:600">${esc(saved.name)} <span class="badge b-${esc(saved.severity)}">${esc(saved.severity)}</span> ${saved.class?`<span class="badge b-hipaa">${esc(saved.class)}</span>`:""}</div><div style="font-size:13px;color:var(--muted);margin:4px 0 8px">${esc(saved.description)}</div><div class="setrow" style="margin-top:8px"><button class="btn ghost sm" onclick="openRuleModal()">+ New rule</button><button class="btn sm" onclick="$('ruleModal').classList.remove('open');go('rules')">Done</button></div></div>`;
+    $("ruleDraft").innerHTML=`<div class="scard" style="border-color:var(--good)"><div class="scard-h" style="color:var(--good)">✓ Saved</div><div style="font-weight:600">${esc(saved.name)} <span class="badge b-${esc(saved.severity)}">${esc(saved.severity)}</span> ${saved.class?`<span class="badge b-class">${esc(saved.class)}</span>`:""}</div><div style="font-size:13px;color:var(--muted);margin:4px 0 8px">${esc(saved.description)}</div><div class="setrow" style="margin-top:8px"><button class="btn ghost sm" onclick="openRuleModal()">+ New rule</button><button class="btn sm" onclick="$('ruleModal').classList.remove('open');go('rules')">Done</button></div></div>`;
     loadRules(); };
 }
 
@@ -572,8 +645,8 @@ let warnShowAcked=false;
 async function loadWarnings(){ const w=await j("/api/warnings"+(warnShowAcked?"?status=all":""));
   const open=w.warnings.filter((x)=>x.status!=="acknowledged");
   const cnt=$("warnCnt"); cnt.style.display=open.length?"":"none"; cnt.textContent=open.length;
-  const bar=`<div class="bar">${open.length?`<button class="btn sm" onclick="ackAllW()">Acknowledge all (${open.length})</button>`:""}<button class="btn ghost sm" onclick="warnShowAcked=!warnShowAcked;loadWarnings()">${warnShowAcked?"Hide acknowledged":"Show acknowledged"}</button></div>`;
-  const rows=w.warnings.length?w.warnings.map((x)=>{const a=x.status==="acknowledged";return `<div class="warning" ${a?'style="opacity:.5"':""}><span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span><div class="body"><div class="title">${esc(x.title)} ${x.class?`<span class="badge b-hipaa">${esc(x.class)}</span>`:""}</div><div class="detail">${esc(x.detail)}</div><div class="src">${esc(sysName(x.system_id))} · ${esc(localTime(x.created_at))}</div></div>${a?'<span class="quiet" style="padding:0">acknowledged</span>':`<button class="btn ghost sm" onclick="ackW('${esc(x.id)}')">Acknowledge</button>`}</div>`;}).join(""):'<div class="quiet">No open warnings. Quiet is good.</div>';
+  const bar=`<div class="bar">${open.length?`<button class="btn sm" onclick="ackAllW()">Dismiss all (${open.length})</button>`:""}<button class="btn ghost sm" onclick="warnShowAcked=!warnShowAcked;loadWarnings()">${warnShowAcked?"Hide acknowledged":"Show acknowledged"}</button>${DEMO?'<span class="quiet" style="padding:0">dismissals last for your visit</span>':""}</div>`;
+  const rows=w.warnings.length?w.warnings.map((x)=>{const a=x.status==="acknowledged";return `<div class="warning" ${a?'style="opacity:.5"':""}><span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span><div class="body"><div class="title">${esc(x.title)} ${x.class?`<span class="badge b-class">${esc(x.class)}</span>`:""}</div><div class="detail">${esc(x.detail)}</div><div class="src">${esc(sysName(x.system_id))} · ${esc(localTime(x.created_at))}</div></div>${a?'<span class="quiet" style="padding:0">acknowledged</span>':`<button class="btn ghost sm" onclick="ackW('${esc(x.id)}')">Acknowledge</button>`}</div>`;}).join(""):'<div class="quiet">No open warnings. Quiet is good.</div>';
   $("warnings").innerHTML=bar+rows; }
 async function ackW(id){ await post("/api/warnings/"+id+"/ack"); loadWarnings(); loadOverview(); }
 async function ackAllW(){ await post("/api/warnings/ack-all",{}); loadWarnings(); loadOverview(); }
@@ -588,7 +661,10 @@ function aiGate(){ const fam=modelFam($("aiModel").value); $("fastWrap").style.d
 async function loadAI(){ const a=await j("/api/ai");
   $("aiModel").innerHTML=a.models.map((m)=>`<option value="${esc(m.id)}" ${m.id===a.model?"selected":""}>${esc(m.label)}${m.legacy?" (previous)":""}</option>`).join("");
   $("aiThinking").value=a.thinking||""; $("aiFast").checked=a.speed!=="";
-  $("aiState").textContent=a.available?(a.fallback?"Built-in list (couldn't reach Anthropic).":"Live model list."):"No key set: add one below or as a Fly secret.";
+  $("aiState").textContent=a.demo
+    ? (a.available?`Demo: ${a.model} on a spend-capped key, ${a.prompts_limit} questions per visitor (${a.prompts_used} used). The key lives only in the environment and cannot be set from here.`
+                  :"Demo: no API key is configured right now, so Ask the logs is unavailable. Everything else is live.")
+    : (a.available?(a.fallback?"Built-in list (couldn't reach Anthropic).":"Live model list."):"No key set: add one below or as a Fly secret.");
   aiGate();
 }
 $("aiModel").onchange=async()=>{ aiGate(); await post("/api/ai",{model:$("aiModel").value}); };
