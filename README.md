@@ -10,6 +10,12 @@ writing about.
 
 What it is not: another log table. Log tables are diaries. Clio is testimony.
 
+**New here?** Ten minutes end to end: [Quick start](#quick-start-local) below
+gets the service running, `SETUP.md` covers the server, and
+`filemaker/Clio Log.md` is the one script your FileMaker file needs. Want to
+see Clio populated before you install anything? There is a live read-only demo
+at [clio-demo.fly.dev](https://clio-demo.fly.dev).
+
 ## How it works
 
 - **Append-only API.** FileMaker sends events with one `Insert from URL`
@@ -31,6 +37,26 @@ What it is not: another log table. Log tables are diaries. Clio is testimony.
   still warn. The AI never computes a number (`RULES.md`).
 - **Yours.** Runs in your own cloud account. One tiny Node service, one
   npm dependency (express), SQLite via `node:sqlite`, one Docker image.
+
+## What's in the box
+
+The whole service is a handful of files in the root. That is the architecture,
+not a summary of it.
+
+| File | What it is |
+|---|---|
+| `server.js` | The Express app. Every route lives here. |
+| `chain.js` | Hashing, linkage, verify. Spec: `CHAIN.md`. |
+| `db.js`, `migrations/` | SQLite via `node:sqlite`. The schema itself refuses UPDATE and DELETE. |
+| `rules.js`, `scan.js` | The deterministic rules engine and the daily pattern scan. |
+| `ai.js` | The optional Anthropic layer: words warnings, answers questions, never computes a number (`RULES.md`). |
+| `public/index.html` | The entire UI, one file, no build step. |
+| `filemaker/` | The three scripts your FileMaker file needs, fully specified. |
+| `test/` | `npm test`. No framework beyond `node:test`. |
+
+Clio ships with no sample data on purpose: your chain starts empty, so its
+first entry is genuinely your first event and the history stays honest. Seeing
+it populated is what the hosted demo is for.
 
 ## Quick start (local)
 
