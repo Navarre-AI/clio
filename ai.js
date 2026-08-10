@@ -175,8 +175,18 @@ function vocabulary(db) {
 
 // Build display artifacts from stored query rows. The model chose columns and
 // titles; every number here comes straight from the rows, never from the model.
+// The prompt asks for at most 2 KPI tiles and 1 chart or table. Asking is not
+// enforcing: a model that ignores it produced four tiles (three of them the
+// same label) and three tables on one answer. So the limit lives here, in code,
+// which is the same split the rest of Clio uses. The model chooses what to
+// show; the code decides how much.
+const MAX_KPI_CELLS = 2;
+const MAX_FIGURES = 1;   // charts and tables together, not each
+
+export function buildArtifactsForTest(spec, queryLog) { return buildArtifacts(spec, queryLog); }
 function buildArtifacts(spec, queryLog) {
   const out = [];
+  let kpiCells = 0, figures = 0;
   for (const b of spec.blocks || []) {
     const q = queryLog[Number(b.queryIndex)];
     if (!q || !q.rows.length) continue;
@@ -190,7 +200,14 @@ function buildArtifacts(spec, queryLog) {
         label: b.label || (labelCol ? String(r[labelCol]) : cols[0]),
         value: Number(r[numCol]),
       }));
-      out.push({ type: "kpi", cells });
+      // One tile row, capped. Extra cells are dropped, not spilled into a
+      // second row, so the answer cannot grow a dashboard.
+      const room = MAX_KPI_CELLS - kpiCells;
+      if (room <= 0) continue;
+      const kept = cells.slice(0, room);
+      if (!kept.length) continue;
+      kpiCells += kept.length;
+      out.push({ type: "kpi", cells: kept });
     } else if (b.type === "bar") {
       const labelCol = b.labelColumn && cols.includes(b.labelColumn) ? b.labelColumn : cols[0];
       let series = q.rows.map((r) => ({ label: String(r[labelCol]), value: Number(r[numCol]) }))
@@ -200,8 +217,12 @@ function buildArtifacts(spec, queryLog) {
         const other = series.slice(7).reduce((s, x) => s + x.value, 0);
         series = [...head, { label: "Other", value: other }];
       }
+      if (figures >= MAX_FIGURES) continue;
+      figures++;
       out.push({ type: "bar", title: b.title || "", series });
     } else if (b.type === "table") {
+      if (figures >= MAX_FIGURES) continue;
+      figures++;
       out.push({ type: "table", title: b.title || "", columns: cols, rows: q.rows.slice(0, 12) });
     }
   }

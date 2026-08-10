@@ -283,3 +283,21 @@ test("a field actually cleared still reports as cleared", () => {
   assert.deepEqual(d.Name, { from: "Acme", to: "" }, "emptied is not the same as omitted");
   assert.ok(!("id" in d), "unchanged fields stay out of the diff");
 });
+
+// The prompt asks for at most 2 KPI tiles and 1 figure. A model ignored it and
+// produced four tiles (three sharing a label) plus three tables in one answer,
+// so the limit is enforced in code now. This pins that.
+import { buildArtifactsForTest } from "../ai.js";
+
+test("an answer cannot grow a dashboard, however many blocks the model asks for", () => {
+  const queryLog = [{ columns: ["label", "n"], rows: [{ label: "a", n: 1 }, { label: "b", n: 2 }] }];
+  const spec = { blocks: [
+    { type: "kpi", queryIndex: 0 }, { type: "kpi", queryIndex: 0 }, { type: "kpi", queryIndex: 0 },
+    { type: "bar", queryIndex: 0 }, { type: "table", queryIndex: 0 }, { type: "bar", queryIndex: 0 },
+  ] };
+  const out = buildArtifactsForTest(spec, queryLog);
+  const cells = out.filter((a) => a.type === "kpi").reduce((n, a) => n + a.cells.length, 0);
+  const figures = out.filter((a) => a.type === "bar" || a.type === "table").length;
+  assert.ok(cells <= 2, `at most 2 KPI cells, got ${cells}`);
+  assert.equal(figures, 1, `exactly one figure survives, got ${figures}`);
+});
