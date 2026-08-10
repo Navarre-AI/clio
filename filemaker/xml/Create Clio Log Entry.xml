@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Script version 1.2  –  8/3/2026</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Author: Matt Navarre</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Purpose: Writes a log record into hosted Clip app on Fly.io</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Called by: OnWindowTransaction trigger, or any script.</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Calls: Fly Function Server-side</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="86" name="Set Error Capture">
+    <Set state="True"/>
+    <DisableStepCollapsed state="False"/>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Your Clio endpoint (https, key in the path)</Text>
+  </Step>
+  <Step enable="True" id="141" name="Set Variable">
+    <DisableStepCollapsed state="False"/>
+    <Value>
+      <Calculation><![CDATA["https://paste_supplied_url_here"]]></Calculation>
+    </Value>
+    <Repetition>
+      <Calculation><![CDATA[1]]></Calculation>
+    </Repetition>
+    <Name>$url</Name>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>====   No changes needed below here  =====</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Take whatever the caller passed; default to an empty object</Text>
+  </Step>
+  <Step enable="True" id="141" name="Set Variable">
+    <DisableStepCollapsed state="False"/>
+    <Value>
+      <Calculation><![CDATA[Case ( not IsEmpty ( Get ( ScriptParameter ) ) ; Get ( ScriptParameter ) ; "{}" )]]></Calculation>
+    </Value>
+    <Repetition>
+      <Calculation><![CDATA[1]]></Calculation>
+    </Repetition>
+    <Name>$json_in</Name>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Enrich ONLY on the client, so the server pass can't overwrite the user's account/table/time with the server session's</Text>
+  </Step>
+  <Step enable="True" id="141" name="Set Variable">
+    <DisableStepCollapsed state="False"/>
+    <Value>
+      <Calculation><![CDATA[Let ([
+  len      = Length ( $json_in ) ;
+  on_server = PatternCount ( Get ( ApplicationVersion ) ; "Server" ) > 0
+] ;
+
+Case (
+  not on_server and len < 900000 ; True ;
+  False
+
+)
+)]]></Calculation>
+    </Value>
+    <Repetition>
+      <Calculation><![CDATA[1]]></Calculation>
+    </Repetition>
+    <Name>$run_on_server</Name>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="68" name="If">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Calculation><![CDATA[$run_on_server = False]]></Calculation>
+  </Step>
+  <Step enable="True" id="141" name="Set Variable">
+    <DisableStepCollapsed state="False"/>
+    <Value>
+      <Calculation><![CDATA[Let ( [
+  ts = GetAsTimestamp ( Int ( Get ( CurrentTimeUTCMilliseconds ) / 1000 ) )
+] ;
+  Year ( ts ) & "-" & Right ( "0" & Month ( ts ) ; 2 ) & "-" & Right ( "0" & Day ( ts ) ; 2 ) & "T" &
+  Right ( "0" & Hour ( ts ) ; 2 ) & ":" & Right ( "0" & Minute ( ts ) ; 2 ) & ":" &
+  Right ( "0" & Seconds ( ts ) ; 2 ) & "Z"
+)]]></Calculation>
+    </Value>
+    <Repetition>
+      <Calculation><![CDATA[1]]></Calculation>
+    </Repetition>
+    <Name>$ts</Name>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Enrich prompt before calling PSoS</Text>
+  </Step>
+  <Step enable="True" id="141" name="Set Variable">
+    <DisableStepCollapsed state="False"/>
+    <Value>
+      <Calculation><![CDATA[//  Clio adds the standard paramers for a log entry
+
+JSONSetElement ( $json_in ;
+  [ "file"         ; Get ( FileName ) ;        JSONString ] ;
+  [ "table"        ; Get ( LayoutTableName ) ; JSONString ] ;
+  [ "account_name" ; Get ( AccountName ) ;     JSONString ] ;
+  [ "ts_client"    ; $ts ;                     JSONString ] ;
+  [ "event_id"     ; Get ( UUID ) ;            JSONString ]
+)]]></Calculation>
+    </Value>
+    <Repetition>
+      <Calculation><![CDATA[1]]></Calculation>
+    </Repetition>
+    <Name>$json_in</Name>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="160" name="Insert from URL">
+    <NoInteract state="True"/>
+    <DontEncodeURL state="False"/>
+    <SelectAll state="True"/>
+    <DisableStepCollapsed state="False"/>
+    <VerifySSLCertificates state="True"/>
+    <CURLOptions>
+      <Calculation><![CDATA["-X POST -H " & Quote ( "Content-Type: application/json" ) & " --data-binary @$json_in"]]></Calculation>
+    </CURLOptions>
+    <Calculation><![CDATA[$url]]></Calculation>
+    <Text/>
+    <Field>$response</Field>
+  </Step>
+  <Step enable="True" id="69" name="Else">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Script was called from hosted client - Run Server-side</Text>
+  </Step>
+  <Step enable="True" id="164" name="Perform Script on Server">
+    <WaitForCompletion state="False"/>
+    <DisableStepCollapsed state="False"/>
+    <Calculation><![CDATA[$json_in]]></Calculation>
+    <Script id="1" name="Create Clio Log Entry"/>
+  </Step>
+  <Step enable="True" id="70" name="End If">
+    <DisableStepCollapsed state="False"/>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+  <Step enable="True" id="103" name="Exit Script">
+    <DisableStepCollapsed state="False"/>
+    <Calculation><![CDATA[$response]]></Calculation>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+  </Step>
+</fmxmlsnippet>
