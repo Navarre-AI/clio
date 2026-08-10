@@ -111,12 +111,18 @@
     <DisableStepCollapsed state="False"/>
     <Value>
       <Calculation><![CDATA[Let ([
-  len      = Length ( $json_in ) ;
-  on_server = PatternCount ( Get ( ApplicationVersion ) ; "Server" ) > 0
+  len       = Length ( $json_in ) ;
+  on_server = PatternCount ( Get ( ApplicationVersion ) ; "Server" ) > 0 ;
+
+//  Is there a server to hand this to? Get ( HostApplicationVersion ) is empty
+//  for a file opened locally, and "Server 26.0.1" when FileMaker Server hosts
+//  it. Without this, a single-user file called Perform Script on Server with
+//  no host, which fails silently under Set Error Capture and logged nothing.
+  hosted    = PatternCount ( Get ( HostApplicationVersion ) ; "Server" ) > 0
 ] ;
 
 Case (
-  not on_server and len < 900000 ; True ;
+  not on_server and hosted and len < 900000 ; True ;
   False
 
 )
