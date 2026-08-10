@@ -84,6 +84,21 @@ file. It also lets the page change what it shows as the user progresses.
 Its URL belongs in a global field, so the file ships generic and a blank field
 leaves the viewer empty rather than broken.
 
+**It is its own page, and nothing on the site links to it.** Not the docs page
+with the nav bar hidden: a separate page that exists only to be rendered inside
+a Web Viewer. Requirements that follow from where it is displayed:
+
+- No site header, nav, or footer. Every link on it would be an exit from an
+  install the user is halfway through.
+- Narrow by default and readable at Web Viewer width, not desktop width.
+- No external assets that a Web Viewer might block. Self-contained.
+- `noindex`, and absent from the sitemap, so it does not surface in search as a
+  stray fragment of the website.
+
+Unlisted is not secret. Assume anyone who knows the URL can read it, so nothing
+on the page is sensitive: no keys, no endpoints, no customer names. It is
+instructions only.
+
 ## Layout
 
 One layout, enough for the above: the Web Viewer, the three buttons, and a
