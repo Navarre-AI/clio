@@ -353,6 +353,12 @@ if (SITE_PASSWORD) {
   const cookieVal = `clio_auth=${encodeURIComponent(SITE_PASSWORD)}`;
   app.use((req, res, next) => {
     if (req.path.startsWith("/v1/") || req.path === "/health") return next();
+    // A write-shaped request outside /api/ is not a browser asking for the UI;
+    // it is almost always a FileMaker script posting to the wrong URL. Let it
+    // through so the catch-all can file it under Unfiled instead of answering
+    // 401, which would drop the entry exactly as the old HTML 404 did.
+    if ((req.method === "POST" || req.method === "PUT" || req.method === "PATCH")
+        && !req.path.startsWith("/api/")) return next();
     if (req.query.key === SITE_PASSWORD) {
       const secure = req.secure || req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
       res.setHeader("Set-Cookie", `${cookieVal}; Path=/; Max-Age=2592000; SameSite=Lax; HttpOnly${secure}`);
@@ -1782,6 +1788,71 @@ try {
     db.prepare("INSERT INTO action_vocab (system_id, action, count) SELECT system_id, action, COUNT(*) FROM log_entries GROUP BY system_id, action").run();
   }
 } catch {}
+
+// ---- catch-all ---------------------------------------------------------------
+// Never drop a log entry because the URL was wrong.
+//
+// /v1/log files an unknown or missing key under "Unfiled" rather than bouncing
+// it. That protection only ever applied once a request REACHED /v1/log. A post
+// to any other path fell through to Express's default handler, which answers
+// with an HTML 404, so the entry was discarded without a trace: no entry, no
+// reject row, nothing in the UI. And the likeliest mistake of all is pasting
+// the dashboard URL instead of the ingest endpoint, which lands on "/".
+//
+// So: anything POST-shaped that carries a body we can read is treated as a log
+// entry that arrived at the wrong door. It is filed, and the reply says in
+// JSON (never HTML, because a FileMaker caller has to parse it) where the door
+// actually is.
+app.use((req, res, next) => {
+  if (res.headersSent) return next();
+  const writeish = req.method === "POST" || req.method === "PUT" || req.method === "PATCH";
+  if (!writeish) return next();
+  if (req.path.startsWith("/api/")) return next();   // UI surface answers for itself
+
+  const correct = publicUrl(req, "/v1/log/<your connection code>");
+  const body = req.body;
+  const hasBody = body && typeof body === "object" && Object.keys(body).length > 0;
+
+  if (!hasBody) {
+    return res.status(404).json(errBody("wrong_endpoint",
+      `Nothing to log here. The ingest endpoint is ${correct}`, res.locals.requestId));
+  }
+  try {
+    ensureUnfiled();
+    // Last resort matters most here. normalizeBody wants an action or a
+    // category; a payload missing both is exactly the confused post this
+    // rescue exists for, and discarding it would repeat the bug. So anything
+    // JSON-shaped that reached the wrong door is kept verbatim under a
+    // generic action, and the operator can see what actually arrived.
+    const entries = looksLikeTxn(body) ? normalizeTxn(body, "unfiled")
+      : (normalizeBody(body) || [{
+          event_id: typeof body.event_id === "string" ? body.event_id : undefined,
+          ts_client: typeof body.ts_client === "string" ? body.ts_client : undefined,
+          category: "unfiled.wrong_endpoint",
+          action: "unfiled.wrong_endpoint.received",
+          payload_json: body,
+        }]);
+    if (entries && entries.length) {
+      const r = appendBatch(db, "unfiled", entries);
+      trackFiles("unfiled", entries);
+      trackVocab("unfiled", entries);
+      emit();
+      recordReject("unfiled", "wrong_endpoint",
+        `Posted to ${req.method} ${req.path}; filed under Unfiled`, JSON.stringify(body).slice(0, 400));
+      return res.status(404).json({
+        ok: false,
+        error: { code: "wrong_endpoint",
+          message: `Saved under Unfiled so nothing was lost, but this is the wrong URL. Post to ${correct}`,
+          request_id: res.locals.requestId },
+        data: { accepted: r.accepted, system_id: "unfiled", head: r.head },
+      });
+    }
+  } catch (e) {
+    console.log(JSON.stringify({ level: "warn", msg: "wrong-endpoint rescue failed", error: String(e.message || e) }));
+  }
+  return res.status(404).json(errBody("wrong_endpoint",
+    `Wrong URL, and the body was not log-shaped. The ingest endpoint is ${correct}`, res.locals.requestId));
+});
 
 // Once a day, ten numbers and a random id, so Matt can count installs. No
 // question text, no log content, no names of any kind. CLIO_TELEMETRY=off

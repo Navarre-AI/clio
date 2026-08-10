@@ -516,3 +516,37 @@ test("without DEMO_MODE the write routes are open again", async () => {
     stop(normal);
   }
 });
+
+// The likeliest install mistake is pasting the dashboard URL instead of the
+// ingest endpoint, which posts to "/". That used to fall through to Express's
+// HTML 404 and the entry was gone: no entry, no reject row, no trace. Which
+// made a liar of the never-drop-data promise at exactly the moment it mattered.
+test("a post to the wrong path is filed, not dropped", async () => {
+  const s = await boot({}, { withDataset: false });   // no DEMO_MODE: a real install
+  try {
+    const payload = { file: "AI Demo DB", table: "Organization", record_id: 1,
+                      account_name: "Someone", event_id: "wrong-door-1" };
+    const r = await req(s.base, "POST", "/?key=some-site-password", { body: payload });
+    assert.equal(r.status, 404, "still an error: the URL really is wrong");
+    const b = await r.json();
+    assert.equal(b.error.code, "wrong_endpoint", "and it says which kind of wrong");
+    assert.match(b.error.message, /\/v1\/log\//, "the reply names the right endpoint");
+    assert.ok(b.data && b.data.accepted >= 1, "but the entry was kept");
+
+    const logs = await (await fetch(s.base + "/v1/logs?system_id=unfiled&limit=10", {
+      headers: { Authorization: "Bearer test-admin-token" } })).json();
+    const hit = (logs.data?.entries || []).some((e) => String(e.payload_json).includes("wrong-door-1"));
+    assert.ok(hit, "and it is readable under Unfiled");
+  } finally { stop(s); }
+});
+
+test("a wrong-path post with no body still answers in JSON, never HTML", async () => {
+  const s = await boot({}, { withDataset: false });
+  try {
+    const r = await req(s.base, "POST", "/nonsense", {});
+    assert.equal(r.status, 404);
+    assert.match(r.headers.get("content-type") || "", /json/, "a FileMaker caller has to parse this");
+    const b = await r.json();
+    assert.equal(b.error.code, "wrong_endpoint");
+  } finally { stop(s); }
+});
