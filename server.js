@@ -16,6 +16,7 @@ import { appendBatch, head, verifyRange, entryHash, GENESIS } from "./chain.js";
 import { runScan, getPrefs } from "./scan.js";
 import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, setAIConfig, aiConfig, currentModel, MODELS, listModels } from "./ai.js";
 import { diffRecords } from "./diff.js";
+import { startTelemetry, countAsk } from "./telemetry.js";
 import { runRules, dryRun, createRule, listRules, updateRule, ruleFirings, ruleMatches, seedDefaultRules } from "./rules.js";
 import * as demoSession from "./demo/demosession.js";
 import * as demoState from "./demo/demostate.js";
@@ -35,7 +36,7 @@ const PORT = Number(process.env.PORT || 8080);
 // a per-visitor prompt cap and a cheap model.
 const DEMO_MODE = process.env.DEMO_MODE === "1";
 const DEMO_AI_LIMIT = Number(process.env.DEMO_AI_LIMIT || 10);       // prompts per visitor
-const DEMO_AI_HOURLY = Number(process.env.DEMO_AI_HOURLY || 60);     // prompts per hour, ALL visitors
+const DEMO_AI_HOURLY = Number(process.env.DEMO_AI_HOURLY || 10);     // prompts per hour, ALL visitors
 const DEMO_AI_MODEL = process.env.DEMO_AI_MODEL || "claude-sonnet-5"; // Haiku reasons badly over 100k log rows
 const DEMO_AI_MAX_TOKENS = Number(process.env.DEMO_AI_MAX_TOKENS || 1000);
 const DEMO_AI_MAX_HOPS = Number(process.env.DEMO_AI_MAX_HOPS || 4);
@@ -1710,6 +1711,9 @@ app.post("/api/ask", async (req, res) => {
     // on the failure path too: a visitor must never see "0 used" after a call
     // that was, in fact, charged against their allowance.
     const counters = DEMO_MODE ? { prompts_used: quota.used, prompts_limit: quota.limit } : {};
+    // +1 to a number. The question itself is not read here, stored here, or
+    // sent anywhere. See telemetry.js for the full list of what leaves.
+    if (!DEMO_MODE) countAsk(db);
     const t0 = Date.now();
     try {
       const out = await askLogs(readHandle(), messages);
@@ -1778,6 +1782,12 @@ try {
     db.prepare("INSERT INTO action_vocab (system_id, action, count) SELECT system_id, action, COUNT(*) FROM log_entries GROUP BY system_id, action").run();
   }
 } catch {}
+
+// Once a day, ten numbers and a random id, so Matt can count installs. No
+// question text, no log content, no names of any kind. CLIO_TELEMETRY=off
+// stops it dead. The full field list and the reasoning are in telemetry.js,
+// README.md, and SECURITY.md. Never in the demo: that machine is Matt's own.
+if (!DEMO_MODE) startTelemetry(db, { version: VERSION, aiOn });
 
 const server = app.listen(PORT, () => {
   console.log(JSON.stringify({ level: "info", msg: `Clio listening on :${PORT}`, db: DB_PATH, ai: aiOn(), model: currentModel() }));
