@@ -195,7 +195,10 @@ test("the viewer opens with no login, and AI is on when a key is present", async
 test("the demo AI runs a cheap model and cannot be reconfigured", async () => {
   const ai = await (await fetch(demo.base + "/api/ai")).json();
   assert.equal(ai.demo, true);
-  assert.match(ai.model, /haiku/, "the demo must run the cheap model");
+  // The invariant is "a fixed, capped model the visitor cannot change", not one
+  // specific model: Haiku reasoned badly over 100k rows, so the demo runs Sonnet.
+  assert.match(ai.model, /^claude-(haiku|sonnet)-/, "the demo must run a fixed capped model");
+  assert.equal(ai.thinking, "off", "the demo must not pay for thinking");
   assert.equal(ai.key_set, false, "the key comes from the environment, never from stored config");
   const r = await req(demo.base, "POST", "/api/ai", { body: { api_key: "sk-ant-someone-elses-key" } });
   assert.equal(r.status, 403, "nobody can hand the demo a key or change its model");

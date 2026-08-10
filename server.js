@@ -36,7 +36,7 @@ const PORT = Number(process.env.PORT || 8080);
 const DEMO_MODE = process.env.DEMO_MODE === "1";
 const DEMO_AI_LIMIT = Number(process.env.DEMO_AI_LIMIT || 10);       // prompts per visitor
 const DEMO_AI_HOURLY = Number(process.env.DEMO_AI_HOURLY || 60);     // prompts per hour, ALL visitors
-const DEMO_AI_MODEL = process.env.DEMO_AI_MODEL || "claude-haiku-4-5"; // cheapest current model
+const DEMO_AI_MODEL = process.env.DEMO_AI_MODEL || "claude-sonnet-5"; // Haiku reasons badly over 100k log rows
 const DEMO_AI_MAX_TOKENS = Number(process.env.DEMO_AI_MAX_TOKENS || 1000);
 const DEMO_AI_MAX_HOPS = Number(process.env.DEMO_AI_MAX_HOPS || 4);
 const DEMO_LINK = process.env.DEMO_LINK || "https://www.navarre.ai";
@@ -1764,7 +1764,10 @@ if (!DEMO_MODE) {
   // key strictly from the environment (a key stored in the database is still a
   // key, so the demo never reads or writes one).
   setModel(DEMO_AI_MODEL);
-  setAIConfig({ thinking: "", speed: "", max_tokens: DEMO_AI_MAX_TOKENS, max_hops: DEMO_AI_MAX_HOPS });
+  // "off" explicitly: an empty string falls through to thinking ENABLED with a
+  // 6000-token budget and an 8000 max_tokens floor, which silently overrode the
+  // spend caps below. The comment above always said no thinking; now it is true.
+  setAIConfig({ thinking: "off", speed: "", max_tokens: DEMO_AI_MAX_TOKENS, max_hops: DEMO_AI_MAX_HOPS });
 }
 // Seed sensible default rules on a fresh install (day one is useful).
 try { seedDefaultRules(db); } catch {}
