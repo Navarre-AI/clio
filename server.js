@@ -34,6 +34,7 @@ const PORT = Number(process.env.PORT || 8080);
 // a per-visitor prompt cap and a cheap model.
 const DEMO_MODE = process.env.DEMO_MODE === "1";
 const DEMO_AI_LIMIT = Number(process.env.DEMO_AI_LIMIT || 10);       // prompts per visitor
+const DEMO_AI_HOURLY = Number(process.env.DEMO_AI_HOURLY || 60);     // prompts per hour, ALL visitors
 const DEMO_AI_MODEL = process.env.DEMO_AI_MODEL || "claude-haiku-4-5"; // cheapest current model
 const DEMO_AI_MAX_TOKENS = Number(process.env.DEMO_AI_MAX_TOKENS || 1000);
 const DEMO_AI_MAX_HOPS = Number(process.env.DEMO_AI_MAX_HOPS || 4);
@@ -1565,10 +1566,31 @@ app.post("/api/scan", async (req, res) => {
 // Per-visitor prompt cap for the demo. Counted server-side, against the session
 // cookie, and spent BEFORE the model call, so a visitor cannot get free prompts
 // by aborting the request or by editing anything the browser can reach.
+// Global hourly ceiling across ALL visitors. The per-visitor cap above is
+// bypassable (clear the cookie, get 10 more), so it protects the experience,
+// not the bill. This one protects the bill: a sliding one-hour window of
+// timestamps, spent before the model call, same as the per-visitor cap.
+const demoAiHits = [];
+function hourlyQuota() {
+  const cutoff = Date.now() - 3600_000;
+  while (demoAiHits.length && demoAiHits[0] < cutoff) demoAiHits.shift();
+  if (demoAiHits.length >= DEMO_AI_HOURLY) {
+    // Minutes until the oldest hit ages out of the window.
+    const waitMin = Math.max(1, Math.ceil((demoAiHits[0] + 3600_000 - Date.now()) / 60_000));
+    return { ok: false, waitMin };
+  }
+  demoAiHits.push(Date.now());
+  return { ok: true };
+}
+
 function askQuota(req) {
   if (!DEMO_MODE) return { ok: true };
   const s = sess(req);
   if (s.aiUsed >= DEMO_AI_LIMIT) return { ok: false, used: s.aiUsed, limit: DEMO_AI_LIMIT };
+  const global = hourlyQuota();
+  if (!global.ok) {
+    return { ok: false, used: s.aiUsed, limit: DEMO_AI_LIMIT, busy: true, waitMin: global.waitMin };
+  }
   s.aiUsed++;
   return { ok: true, used: s.aiUsed, limit: DEMO_AI_LIMIT };
 }
@@ -1587,9 +1609,14 @@ app.post("/api/ask", async (req, res) => {
     if (!messages.length) return res.status(400).json({ error: "messages required" });
     const quota = askQuota(req);
     if (!quota.ok) {
+      // Two different refusals: this visitor is out, or the whole demo is
+      // out for the hour. Say which, so nobody thinks they broke it.
+      const reply = quota.busy
+        ? `The demo has hit its hourly question limit (it runs on Matt's bill). Try again in about ${quota.waitMin} ${quota.waitMin === 1 ? "minute" : "minutes"}. The full Clio has no cap: it answers from your own logs, on your own server. ${DEMO_LINK}`
+        : `That's all ${quota.limit} questions for this demo session. The full Clio has no cap: it answers from your own logs, on your own server. ${DEMO_LINK}`;
       return res.json({
-        reply: `That's all ${quota.limit} questions for this demo session. The full Clio has no cap: it answers from your own logs, on your own server. ${DEMO_LINK}`,
-        artifacts: [], quota_exhausted: true, prompts_used: quota.used, prompts_limit: quota.limit,
+        reply, artifacts: [], quota_exhausted: !quota.busy, demo_busy: !!quota.busy,
+        prompts_used: quota.used, prompts_limit: quota.limit,
       });
     }
     // The prompt is spent whether or not the model answers, so the counters ride
