@@ -257,3 +257,29 @@ test("fingerprint comes from the detector, not the words", () => {
   assert.equal(fingerprintOf({ title: "orphan", evidence: null }), "title:orphan",
     "no evidence falls back to the title");
 });
+
+
+// diffRecords used to union the old and new payload keys, so a field missing
+// from the new payload read as {from: value, to: null}: "cleared". The
+// per-table calc sends only Get(ModifiedFields), so most fields are absent
+// from most commits, and every ordinary edit claimed the primary key was wiped.
+// Live evidence that prompted this: clio-demo-db entry seq 2 reported
+// changed.ID = {from: "C57737C4-...", to: null} on a commit that only set Name.
+import { diffRecords } from "../diff.js";
+
+test("a partial payload does not report untouched fields as cleared", () => {
+  const prev = { ID: "C57737C4", id: "C57737C4", z_ModifiedTS: "3:25:20 PM" };
+  const next = { Name: "Acme", id: "C57737C4", z_ModifiedTS: "3:25:23 PM" };
+  const d = diffRecords(prev, next);
+
+  assert.ok(!("ID" in d), "ID was absent from the new payload, not cleared");
+  assert.deepEqual(d.Name, { from: null, to: "Acme" }, "a newly reported field reads as a change");
+  assert.deepEqual(d.z_ModifiedTS, { from: "3:25:20 PM", to: "3:25:23 PM" });
+});
+
+test("a field actually cleared still reports as cleared", () => {
+  // FileMaker sends a wiped field as present-and-empty, so the key is there.
+  const d = diffRecords({ Name: "Acme", id: "x" }, { Name: "", id: "x" });
+  assert.deepEqual(d.Name, { from: "Acme", to: "" }, "emptied is not the same as omitted");
+  assert.ok(!("id" in d), "unchanged fields stay out of the diff");
+});

@@ -74,7 +74,7 @@ if (!appName) { console.error("An app name is required."); process.exit(1); }
 // https://fly.io/docs/reference/regions/
 const region = String(flag("region") || await askRequired("Fly region (e.g. fra, iad, syd; nearest your FileMaker server)"));
 const adminToken = await askDefault("Admin token (guards key minting)", token());
-const sitePassword = await askDefault("Site password for the web UI (blank = open)", token().slice(0, 12));
+const sitePassword = await askDefault("Site password for the dashboard (blank = open)", `clio_ui_${token().slice(0, 12)}`);
 const aiKey = await askDefault("Anthropic API key (blank = deterministic warnings only, no chat)", "");
 
 const tpl = fs.readFileSync(path.join(__dirname, "fly.template.toml"), "utf8");
@@ -119,7 +119,7 @@ console.log("Clio is live. The FileMaker side is ONE script (see filemaker/Clio.
 console.log("Put this URL in its single Insert from URL step:");
 console.log(`\n  ${logUrl}\n`);
 console.log("Then set that script as the file's OnWindowTransaction trigger.");
-if (sitePassword) console.log(`\n  Web UI        ${url}/?key=${sitePassword}`);
+if (sitePassword) console.log(`\n  Dashboard     ${url}   (site password: ${sitePassword})`);
 console.log(`  Admin token   ${adminToken}   (store it; shown only here)`);
 console.log("--------------------------------------------------------------");
 console.log("The key is embedded in the URL above and shown exactly once.");

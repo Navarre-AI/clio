@@ -15,6 +15,7 @@ import { openDb, openDbReadOnly } from "./db.js";
 import { appendBatch, head, verifyRange, entryHash, GENESIS } from "./chain.js";
 import { runScan, getPrefs } from "./scan.js";
 import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, setAIConfig, aiConfig, currentModel, MODELS, listModels } from "./ai.js";
+import { diffRecords } from "./diff.js";
 import { runRules, dryRun, createRule, listRules, updateRule, ruleFirings, ruleMatches, seedDefaultRules } from "./rules.js";
 import * as demoSession from "./demo/demosession.js";
 import { liveFor } from "./demo/demolive.js";
@@ -78,12 +79,19 @@ function fail(res, status, code, message) {
   return res.status(status).json(errBody(code, message, res.locals.requestId));
 }
 
-// nk_clio_<24 base62>, chassis format. Plaintext shown once; sha256 at rest.
+// clio_in_<24 base62>. Plaintext shown once; sha256 at rest.
+//
+// The prefix says what the secret is FOR, because Clio has two and they are
+// not interchangeable: clio_in_ writes log entries and lives in a FileMaker
+// script that any full-access developer can read, while clio_ui_ reads the
+// whole dashboard. Pasting one where the other belongs used to be silent.
+// Older nk_clio_ keys keep working: nothing validates the prefix, keys are
+// matched by hash.
 const B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 function generateApiKey() {
   let s = "";
   for (const b of randomBytes(24)) s += B62[b % 62];
-  return `nk_clio_${s}`;
+  return `clio_in_${s}`;
 }
 
 function bearer(req) {
@@ -465,15 +473,6 @@ function previousData(systemId, table, recId) {
   } catch { return null; }
 }
 
-function diffRecords(prev, next) {
-  const changed = {};
-  for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) {
-    if (JSON.stringify(prev[k]) !== JSON.stringify(next[k])) {
-      changed[k] = { from: prev[k] ?? null, to: next[k] ?? null };
-    }
-  }
-  return changed;
-}
 
 // Auto-discover database files from a transaction batch: upsert each file
 // under this system, bump its lifetime count, flag new ones for the admin.

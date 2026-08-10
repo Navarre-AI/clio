@@ -295,7 +295,10 @@ const CLIO_ACTIONS = { "clio.scan.run":"watchdog scan ran", "clio.admin.key_mint
 function friendlyAction(a) { if(/\s/.test(a))return a;
   if(CLIO_ACTIONS[a])return CLIO_ACTIONS[a];
   if(a.startsWith("clio."))return a.slice(5).replace(/[_.]/g," ");
-  const p=a.split("."); if(p.length>=3){const t=p[p.length-1]; return `${VERB[t]||t} a ${p[p.length-2]} record`;} return a.replace(/[_.]/g," "); }
+  const p=a.split("."); if(p.length>=3){const t=p[p.length-1],n=p[p.length-2]; return `${VERB[t]||t} ${art(n)} ${n} record`;} return a.replace(/[_.]/g," "); }
+// "an Organization", "a Contact". Table names are the author's, so go by the
+// leading letter rather than a word list.
+const art=(w)=>/^[aeiou]/i.test(String(w)) ? "an" : "a";
 function humanLine(e) {
   let p={}; try{p=JSON.parse(e.payload_json);}catch{return{text:friendlyAction(e.action),who:""};}
   const who = p.account_name || (p.data&&p.data.z_Modifier) || "";
