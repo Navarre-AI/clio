@@ -124,8 +124,12 @@
   .p-head { display:flex; align-items:center; padding:15px 20px; border-bottom:1px solid var(--line); } .p-head .ttl { font-family:var(--serif); font-size:18px; font-weight:600; } .p-head .x { margin-left:auto; color:var(--dim); font-size:20px; }
   .tabs { display:flex; gap:6px; padding:10px 18px 0; border-bottom:1px solid var(--line); } .tabs button { border:1px solid transparent; border-bottom:none; padding:8px 16px; border-radius:9px 9px 0 0; color:var(--muted); font-size:13.5px; font-weight:600; } .tabs button.on { background:var(--panel); border-color:var(--line); color:var(--ink); margin-bottom:-1px; padding-bottom:9px; }
   .p-list { overflow-y:auto; padding:16px 18px 24px; flex:1; }
-  .p-foot { display:flex; align-items:center; gap:10px; padding:12px 18px; border-top:1px solid var(--line); }
-  .p-foot .logo { height:22px; color:var(--ink); } .p-foot .sp { flex:1; }
+  .p-foot { display:flex; align-items:center; gap:10px; padding:16px 18px; border-top:1px solid var(--line); }
+  /* Sized by WIDTH, not height: the mark is a 420x120 wordmark, so a height
+     cap made it tiny. Pythia's is 118px wide; this is deliberately larger. */
+  .p-foot .logo { width:150px; height:auto; color:var(--ink); display:block; opacity:.85; }
+  .p-foot .logo:hover { opacity:1; }
+  .p-foot .sp { flex:1; }
   .hint { color:var(--dim); font-size:12px; margin-top:4px; }
   .setrow { display:flex; gap:10px; align-items:center; margin:8px 0; flex-wrap:wrap; } .setrow label { font-size:13px; color:var(--muted); width:130px; flex:none; }
   .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:13px; } .kv .kk { color:var(--muted); white-space:nowrap; } .kv .kvv { word-break:break-word; }
