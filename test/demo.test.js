@@ -524,7 +524,7 @@ test("without DEMO_MODE the write routes are open again", async () => {
 test("a post to the wrong path is filed, not dropped", async () => {
   const s = await boot({}, { withDataset: false });   // no DEMO_MODE: a real install
   try {
-    const payload = { file: "AI Demo DB", table: "Organization", record_id: 1,
+    const payload = { file: "Example DB", table: "Organization", record_id: 1,
                       account_name: "Someone", event_id: "wrong-door-1" };
     const r = await req(s.base, "POST", "/?key=some-site-password", { body: payload });
     assert.equal(r.status, 404, "still an error: the URL really is wrong");

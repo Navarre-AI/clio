@@ -1,4 +1,4 @@
-# Clio schema XML for "AI Demo DB"
+# Clio schema XML
 
 Two table-clipboard (XMTB) payloads, ready to paste into Manage Database.
 Format matches the FM 26 clipboard capture shape: camelCase `dataType` /
@@ -13,7 +13,7 @@ Format matches the FM 26 clipboard capture shape: camelCase `dataType` /
 
 1. **ClioSettings table.** Put `ClioSettings.xml` on the clipboard as an FM
    table object (e.g. via FMClipboardBroker or your XML-to-clipboard tool of
-   choice, class XMTB), then in AI Demo DB: Manage Database > Tables > Paste.
+   choice, class XMTB), then in your solution: Manage Database > Tables > Paste.
    Requires "Use advanced tools" for the Paste button.
 2. **ClioAnchor table.** Same with `ClioAnchor.xml`.
 3. **Layouts.** Confirm a layout named `ClioAnchor` exists showing the

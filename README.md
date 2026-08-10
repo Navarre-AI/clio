@@ -10,10 +10,8 @@ writing about.
 
 What it is not: another log table. Log tables are diaries. Clio is testimony.
 
-**New here?** Start with [INSTALL.md](INSTALL.md): about ten minutes on macOS,
-and it touches nothing on your FileMaker Server. Want to see Clio populated
-before installing anything? There is a live read-only demo at
-[clio-demo.fly.dev](https://clio-demo.fly.dev).
+**New here?** Start with [INSTALL.md](INSTALL.md): about ten minutes on macOS
+or Windows, and it touches nothing on your FileMaker Server.
 
 ## How it works
 

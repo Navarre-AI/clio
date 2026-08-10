@@ -1,4 +1,4 @@
-# Building Clio into AI Demo DB
+# Building Clio into your solution
 
 Tailored to the actual schema (24 base tables), read from a Save a Copy as XML
 export kept outside this repo. Those exports carry the file's whole

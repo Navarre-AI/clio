@@ -8,7 +8,7 @@ this is the story.
 - **Try It demo.** A read-only public demo (`DEMO_MODE=1`) built on a
   deterministic, entirely fictional dataset. Every write-shaped route refuses;
   rules, warnings, and the AI stay interactive per visitor and never touch the
-  shared data. Live at [clio-demo.fly.dev](https://clio-demo.fly.dev). The same
+  shared data. The same
   generator makes local sample data.
 - **Log Entries.** A full table over the raw entries: search, sort, filters.
 - **Hardening.** Rules and warnings tightened, XSS fixes, the Clio license.

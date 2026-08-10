@@ -16,7 +16,6 @@ import { appendBatch, head, verifyRange, entryHash, GENESIS } from "./chain.js";
 import { runScan, getPrefs } from "./scan.js";
 import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, setAIConfig, aiConfig, currentModel, MODELS, listModels } from "./ai.js";
 import { diffRecords } from "./diff.js";
-import { startTelemetry, countAsk } from "./telemetry.js";
 import { runRules, dryRun, createRule, listRules, updateRule, ruleFirings, ruleMatches, seedDefaultRules } from "./rules.js";
 import * as demoSession from "./demo/demosession.js";
 import * as demoState from "./demo/demostate.js";
@@ -1717,9 +1716,6 @@ app.post("/api/ask", async (req, res) => {
     // on the failure path too: a visitor must never see "0 used" after a call
     // that was, in fact, charged against their allowance.
     const counters = DEMO_MODE ? { prompts_used: quota.used, prompts_limit: quota.limit } : {};
-    // +1 to a number. The question itself is not read here, stored here, or
-    // sent anywhere. See telemetry.js for the full list of what leaves.
-    if (!DEMO_MODE) countAsk(db);
     const t0 = Date.now();
     try {
       const out = await askLogs(readHandle(), messages);
@@ -1740,7 +1736,7 @@ app.post("/api/ask", async (req, res) => {
 // a self-hosted Clio has no such route at all.
 //
 //   curl -s -H "Authorization: Bearer $DEMO_QUESTIONS_TOKEN" \
-//     https://clio-demo.fly.dev/api/demo/questions | jq
+//     https://<your-demo-app>.fly.dev/api/demo/questions | jq
 if (DEMO_MODE && DEMO_QUESTIONS_TOKEN) {
   app.get("/api/demo/questions", (req, res) => {
     if (!constantTimeEqual(bearer(req), DEMO_QUESTIONS_TOKEN)) {
@@ -1853,12 +1849,6 @@ app.use((req, res, next) => {
   return res.status(404).json(errBody("wrong_endpoint",
     `Wrong URL, and the body was not log-shaped. The ingest endpoint is ${correct}`, res.locals.requestId));
 });
-
-// Once a day, ten numbers and a random id, so Matt can count installs. No
-// question text, no log content, no names of any kind. CLIO_TELEMETRY=off
-// stops it dead. The full field list and the reasoning are in telemetry.js,
-// README.md, and SECURITY.md. Never in the demo: that machine is Matt's own.
-if (!DEMO_MODE) startTelemetry(db, { version: VERSION, aiOn });
 
 const server = app.listen(PORT, () => {
   console.log(JSON.stringify({ level: "info", msg: `Clio listening on :${PORT}`, db: DB_PATH, ai: aiOn(), model: currentModel() }));

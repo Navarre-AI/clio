@@ -1,6 +1,6 @@
 # Installing Clio
 
-macOS. About ten minutes, most of it waiting for a deploy.
+macOS or Windows. About ten minutes, most of it waiting for a deploy.
 
 You need a Fly.io account (a Clio instance runs a few dollars a month) and
 FileMaker Pro. You do **not** need Node, Docker, an Anthropic key, a FileMaker
@@ -9,11 +9,22 @@ Clio never connects to FileMaker. Everything travels outbound from your file.
 
 ## 1. Put Clio in your own cloud
 
+**macOS**, in Terminal:
+
 ```
 curl -fsSL https://navarre.ai/get/clio | sh
 ```
 
-It installs the Fly CLI if you don't have it, signs you in, asks which region
+**Windows**, in PowerShell (native, no WSL):
+
+```
+irm https://navarre.ai/get/clio.ps1 | iex
+```
+
+Linux is not offered yet. Clio is one small Node service and `node setup.mjs`
+does the same job from a clone of this repo.
+
+Either one installs the Fly CLI if you don't have it, signs you in, asks which region
 to run in (pick the one nearest your FileMaker server), creates the app and its
 volume, deploys, and opens your browser.
 

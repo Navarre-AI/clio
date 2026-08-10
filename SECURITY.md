@@ -66,9 +66,9 @@ existence is reported to Matt or to anyone else, and there is no switch that
 turns such a thing on, because the code to do it is not in here. Grep for
 `fetch(` if you would rather check than take this paragraph's word for it.
 
-The one exception is not your install: **the public demo at clio-demo.fly.dev
-records the questions visitors type into it**, which is Matt's own server,
-which is why the demo's Ask box says so on screen. That capture lives in
+The one exception is not your install: **an instance running under `DEMO_MODE`
+records the questions visitors type into it**, which is why the demo's Ask box
+says so on screen. That capture lives in
 `demo/demostate.js`, is wired up only under `DEMO_MODE`, and writes only to
 that machine.
 

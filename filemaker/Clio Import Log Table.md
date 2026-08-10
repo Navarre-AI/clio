@@ -74,7 +74,7 @@ stored timestamp instead of the current clock. If the source timestamps are
 server-local, either accept that (analysis is relative anyway) or shift by
 your UTC offset in the calc.
 
-## AI Demo DB's Log table, specifically
+## A legacy Log table, specifically
 
 The file already has `Log (ID_Foreign, JSON, zCreated_TS)`: the classic
 inside-the-file log Clio exists to replace. The generic script above is

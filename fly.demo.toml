@@ -62,7 +62,7 @@ primary_region = "sjc"
 # One optional second secret, for reading back what visitors asked:
 #
 #   fly secrets set DEMO_QUESTIONS_TOKEN=$(openssl rand -hex 24) -a clio-demo
-#   curl -s -H "Authorization: Bearer <that>" https://clio-demo.fly.dev/api/demo/questions | jq
+#   curl -s -H "Authorization: Bearer <that>" https://<your-demo-app>.fly.dev/api/demo/questions | jq
 #
 # Unset, the route does not exist. This is Matt's own demo server and the UI
 # tells visitors their questions are recorded; a self-hosted Clio has neither

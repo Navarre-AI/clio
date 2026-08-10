@@ -31,7 +31,7 @@ Config: `CLIO_TZ_OFFSET`, `BUSINESS_HOURS`, `BUSINESS_DAYS`,
 ## Next detectors, in rough order of value
 
 Per-user detectors need `"user": Get ( AccountName )` in payloads (the AI
-Demo DB build guide already does this); they read it via
+the example build guide already does this); they read it via
 `json_extract(payload_json, '$.user')`.
 
 1. **Dormant account wakes up.** An account with no activity in 30+ days
@@ -63,7 +63,7 @@ Demo DB build guide already does this); they read it via
 ## Ingesting existing logs (why analysis gets history)
 
 `filemaker/Clio Import Log Table.md` pulls a solution's existing log table
-(fmLog, Audit, the AI Demo DB `Log` table) onto the chain with original
+(fmLog, Audit, a legacy `Log` table) onto the chain with original
 timestamps preserved in `ts_client` and source-record UUIDs as `event_id`
 (idempotent re-runs). The scan detectors and ask-the-logs then see years of
 history on day one instead of starting blind, and the old table can retire.
