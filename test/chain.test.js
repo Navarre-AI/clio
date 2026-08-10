@@ -183,3 +183,77 @@ test("watchdog: delete spike is its own kind", () => {
   const aggs = aggregatesForSystem(db, "s", now);
   assert.ok(aggs.some((a) => a.kind === "delete_spike"), JSON.stringify(aggs));
 });
+
+// The bug this guards: dedupe used to key on the warning's TITLE. With an AI
+// key the model rewords the same condition every night, so nothing matched and
+// a persisting problem refiled daily. One live system reached 200+ warnings
+// covering about two real conditions, and acknowledgements never stuck.
+import { runScan, warningsFromAggregates, fingerprintOf } from "../scan.js";
+
+function silentSystemDb() {
+  const db = tempDb();
+  const now = Date.parse("2026-07-20T12:00:00Z");
+  let seq = 0;
+  // A steady baseline that then stops: "system_silent" plus "action_silent".
+  for (let d = 15; d >= 3; d--) {
+    const day = new Date(now - d * 86400000).toISOString().slice(0, 10);
+    for (let i = 0; i < 6; i++) rawInsert(db, "s", ++seq, `${day}T10:0${i}:00.000Z`, "fm.field.edited");
+  }
+  return { db, now };
+}
+
+test("dedupe survives an AI that rewords the same finding every scan", async () => {
+  const { db, now } = silentSystemDb();
+  // Same detector output each night; only the wording changes, as a model does.
+  const wordings = [
+    "Login activity stopped entirely",
+    "Login activity silent",
+    "Logins and logouts both silent",
+    "Field edits dropped to zero",
+  ];
+  let call = 0;
+  const reworder = async (systemId, aggregates) =>
+    warningsFromAggregates(aggregates).map((w) => ({ ...w, title: `${wordings[call++ % wordings.length]} #${call}` }));
+
+  for (let day = 0; day < 4; day++) {
+    await runScan(db, { aiFindings: reworder, force: true, now: now + day * 86400000 });
+  }
+  const rows = db.prepare("SELECT title, fingerprint FROM warnings").all();
+  const distinctTitles = new Set(rows.map((r) => r.title)).size;
+  const distinctPrints = new Set(rows.map((r) => r.fingerprint)).size;
+
+  assert.equal(rows.length, distinctPrints,
+    `one row per condition; got ${rows.length} rows for ${distinctPrints} conditions`);
+  assert.ok(distinctTitles <= distinctPrints,
+    "rewording must not create extra rows");
+});
+
+test("an acknowledged finding stays acknowledged when reworded", async () => {
+  const { db, now } = silentSystemDb();
+  const say = (t) => async (systemId, aggregates) =>
+    warningsFromAggregates(aggregates).map((w) => ({ ...w, title: t }));
+
+  await runScan(db, { aiFindings: say("System has gone quiet"), force: true, now });
+  db.prepare("UPDATE warnings SET status = 'acknowledged'").run();
+  const acked = db.prepare("SELECT COUNT(*) AS n FROM warnings").get().n;
+
+  // Next scan, same conditions, brand-new words.
+  await runScan(db, { aiFindings: say("No activity detected at all"), force: true, now: now + 3600000 });
+
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM warnings").get().n, acked,
+    "a recently acknowledged finding must not come back under a new name");
+});
+
+test("fingerprint comes from the detector, not the words", () => {
+  const a = { kind: "action_silent", action: "fm.field.edited", system_id: "s" };
+  assert.equal(
+    fingerprintOf({ title: "Field edits stopped", evidence: a }),
+    fingerprintOf({ title: "Editing has flatlined", evidence: a }),
+    "same evidence, different wording, same fingerprint");
+  assert.notEqual(
+    fingerprintOf({ title: "x", evidence: a }),
+    fingerprintOf({ title: "x", evidence: { ...a, action: "fm.login" } }),
+    "different action is a different finding");
+  assert.equal(fingerprintOf({ title: "orphan", evidence: null }), "title:orphan",
+    "no evidence falls back to the title");
+});

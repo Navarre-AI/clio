@@ -373,7 +373,23 @@ test("the live trickle is per visitor, chained, and never written to the dataset
   // a different visitor gets their own, and the underlying dataset is untouched
   const b = await visitor(demo.base);
   const bv = await b.get("/api/verify?system_id=cascade-office");
-  assert.ok(bv.checked <= av.checked, "B's chain is their own, not A's");
+  assert.equal(bv.valid, true, "B's chain verifies too");
+  // Deliberately NOT a comparison of counts. Both visitors trickle on the same
+  // timer, so which one has more entries at any instant is a race, and the
+  // count never showed what this is about anyway. The real property is that
+  // the two visitors' live entries are generated independently: at a given seq
+  // past the shared head, B holds B's event, not a copy of A's. (The feed does
+  // not expose event_id, so compare the payload, which is what a visitor sees.)
+  const bFeed = await b.get("/api/logs?limit=50");
+  const bFresh = bFeed.entries.filter((e) => e.seq > before.head.seq && e.system_id === "cascade-office");
+  assert.ok(bFresh.length > 0, "B gets a live trickle of their own");
+  const aBySeq = new Map(fresh.map((e) => [e.seq, e.payload_json]));
+  const overlap = bFresh.filter((e) => aBySeq.has(e.seq));
+  assert.ok(overlap.length > 0, "the two visitors' chains cover the same seq range");
+  const identical = overlap.filter((e) => aBySeq.get(e.seq) === e.payload_json);
+  assert.ok(identical.length < overlap.length,
+    `B's live entries must be generated for B, not copied from A ` +
+    `(${identical.length}/${overlap.length} payloads matched A's exactly)`);
   const plain = await (await fetch(demo.base + "/api/verify?system_id=cascade-office")).json();
   assert.equal(plain.valid, true, "the shared dataset still verifies untouched");
 });

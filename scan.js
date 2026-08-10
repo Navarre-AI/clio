@@ -206,21 +206,26 @@ export async function runScan(db, { force = false, aiFindings = null, ruleFindin
       .map((r) => r.system_id);
     let findings = 0;
     const ins = db.prepare(
-      `INSERT INTO warnings (id, system_id, severity, title, detail, evidence_json, scan_id, source, class)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO warnings (id, system_id, severity, title, detail, evidence_json, scan_id, source, class, fingerprint)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    // Dedup: a finding is "the same" by system + source + title. Don't re-create it if an
-    // open one already exists, or if it was acknowledged within the last 20 hours. This is
-    // what makes acknowledgements stick instead of the finding re-appearing every scan.
+    // Dedup: a finding is "the same" by system + source + FINGERPRINT. Don't re-create it
+    // if an open one already exists, or if it was acknowledged within the last 20 hours.
+    // This is what makes acknowledgements stick instead of the finding re-appearing.
+    //
+    // Deliberately NOT the title: with an AI key the model writes the title and rewords
+    // the same condition every night, so a title-keyed check never matches and a
+    // persisting problem refiles daily. The fingerprint comes from the detector instead.
     const dupe = db.prepare(
-      `SELECT 1 FROM warnings WHERE system_id = ? AND source = ? AND title = ?
+      `SELECT 1 FROM warnings WHERE system_id = ? AND source = ? AND fingerprint = ?
          AND (status = 'open' OR (status = 'acknowledged' AND created_at > datetime('now','-20 hours')))
        LIMIT 1`
     );
     const put = (w, source, cls) => {
-      if (dupe.get(w.system_id, source, w.title)) return; // already surfaced, or acked recently
+      const fp = fingerprintOf(w);
+      if (dupe.get(w.system_id, source, fp)) return; // already surfaced, or acked recently
       ins.run(randomUUID(), w.system_id, w.severity, w.title, w.detail,
-        JSON.stringify(w.evidence ?? null), scanId, source, cls ?? null);
+        JSON.stringify(w.evidence ?? null), scanId, source, cls ?? null, fp);
       findings++;
     };
     // Automatic detectors, per system.
@@ -242,6 +247,25 @@ export async function runScan(db, { force = false, aiFindings = null, ruleFindin
       .run(iso(Date.now()), scanId);
     throw e;
   }
+}
+
+// A finding's stable identity, independent of how it is worded.
+//
+// Taken from the evidence the detector produced, never from the title: the
+// aggregate's kind plus the action it concerns (a rule uses its rule id).
+// Two scans that find the same condition produce the same fingerprint even
+// when the model describes it in completely different words.
+//
+// The last resort is the title, which only applies to a finding that arrived
+// with no evidence at all. That degrades to the old behaviour rather than
+// crashing, and it is the one case where rewording still duplicates.
+export function fingerprintOf(w) {
+  const e = w.evidence;
+  if (e && typeof e === "object" && !Array.isArray(e)) {
+    if (e.rule_id) return `rule:${e.rule_id}`;
+    if (e.kind) return `${e.kind}:${e.action ?? ""}`;
+  }
+  return `title:${w.title}`;
 }
 
 function iso(ms) { return new Date(ms).toISOString(); }
