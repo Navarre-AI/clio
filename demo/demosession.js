@@ -34,8 +34,9 @@ function blank(id) {
     ruleDeleted: new Set(), // baseline rule ids hidden for this visitor
     ruleNew: [],            // rules this visitor created (full row shape)
     warningAcked: new Set(),// warning ids this visitor dismissed
-    aiUsed: 0,              // prompts spent against the per-visitor cap
     live: null,             // the visitor's own live trickle (demolive.js)
+    // NOT here: the AI prompt count. It protects a bill, so it must survive a
+    // restart, and it lives in the durable questions table (demostate.js).
   };
 }
 

@@ -6,9 +6,16 @@
 # with setup.mjs, which is why the demo carries its own named config. Always cd
 # into the repo first: deploying from another directory targets another app.)
 #
-# The dataset is baked into the image by Dockerfile.demo, so there is no volume
-# and nothing to restore: a machine boots by opening a file that is already
-# there. Machines are disposable by design; the data dies with them.
+# The dataset is baked into the image by Dockerfile.demo: a machine boots by
+# opening a file that is already there, and that file is read-only exhibition
+# material, regenerated on every build. Nothing about it needs a volume.
+#
+# The volume below is for the one thing that must NOT die with a machine: what
+# the demo has spent on Matt's Anthropic key. Both AI caps used to be process
+# memory (a counter on the in-memory session, and an array of timestamps), so
+# every deploy or machine move handed every visitor a fresh ten prompts and put
+# the hourly ceiling back to zero. A cap that resets when Fly feels like moving
+# a machine is not a cap. See demo/demostate.js.
 
 app = "clio-demo"
 primary_region = "sjc"
@@ -21,8 +28,22 @@ primary_region = "sjc"
   # from its config alone. DEMO_MODE is what makes every write route refuse.
   DATA_DIR = "/demo-data"
   DEMO_MODE = "1"
+  # The durable side-file: AI spend counters and the captured questions. A
+  # different path from DATA_DIR on purpose, so the baked dataset stays pristine
+  # and the only writable state is the small thing that has to be.
+  DEMO_STATE_DIR = "/demo-state"
 
-# No [mounts]: canned data, disposable machines, nothing worth persisting.
+# One 1GB volume, created once:
+#
+#   fly volumes create clio_demo_state -a clio-demo -r sjc -s 1 -y
+#
+# Single machine, no auto-stop, so there is exactly one writer and no forked
+# state. Losing this volume costs the spend history and the question log,
+# nothing a visitor can see.
+[mounts]
+  source = "clio_demo_state"
+  destination = "/demo-state"
+
 #
 # Secrets: no ADMIN_TOKEN and no SITE_PASSWORD (DEMO_MODE ignores both even if
 # one appeared). ONE secret is expected:
@@ -31,10 +52,21 @@ primary_region = "sjc"
 #
 # and it must be a SPEND-CAPPED key in its own workspace, because this app is
 # public. What the demo does with it is bounded in code, not by trust:
-# claude-haiku-4-5 only, short answers, at most 4 tool hops, and 10 questions per
-# visitor (DEMO_AI_LIMIT). Ask-the-logs and warning wording are the only paths
-# that use it; the conversational rule author and the AI pulse are off. Without
-# the secret the demo degrades gracefully and says so on screen.
+# claude-haiku-4-5 only, short answers, at most 4 tool hops, 10 questions per
+# visitor (DEMO_AI_LIMIT) and 60 per hour across everyone (DEMO_AI_HOURLY), both
+# counted on the volume so a restart does not reset them. Ask-the-logs and
+# warning wording are the only paths that use it; the conversational rule author
+# and the AI pulse are off. Without the secret the demo degrades gracefully and
+# says so on screen.
+#
+# One optional second secret, for reading back what visitors asked:
+#
+#   fly secrets set DEMO_QUESTIONS_TOKEN=$(openssl rand -hex 24) -a clio-demo
+#   curl -s -H "Authorization: Bearer <that>" https://clio-demo.fly.dev/api/demo/questions | jq
+#
+# Unset, the route does not exist. This is Matt's own demo server and the UI
+# tells visitors their questions are recorded; a self-hosted Clio has neither
+# the route nor the capture.
 
 [http_service]
   internal_port = 8080

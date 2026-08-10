@@ -35,9 +35,12 @@ function freePort() {
   });
 }
 
-async function boot(extraEnv, { withDataset = false } = {}) {
+// `reuseDir` boots a second server over the first one's data directory, which
+// is how the durability of the AI spend counters gets tested the only way worth
+// testing it: kill the process, start it again, see whether the caps remember.
+async function boot(extraEnv, { withDataset = false, reuseDir = null } = {}) {
   const port = await freePort();
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clio-demo-test-"));
+  const dir = reuseDir || fs.mkdtempSync(path.join(os.tmpdir(), "clio-demo-test-"));
   // The generated demo database, so the tests run against the rules, warnings
   // and log entries a visitor actually meets.
   if (withDataset && HAVE_DATASET) fs.copyFileSync(DEMO_DB, path.join(dir, "clio.db"));
@@ -74,10 +77,10 @@ async function boot(extraEnv, { withDataset = false } = {}) {
   return { child, base, dir };
 }
 
-function stop(s) {
+function stop(s, { keepDir = false } = {}) {
   if (!s) return;
   try { s.child.kill("SIGKILL"); } catch {}
-  try { fs.rmSync(s.dir, { recursive: true, force: true }); } catch {}
+  if (!keepDir) try { fs.rmSync(s.dir, { recursive: true, force: true }); } catch {}
 }
 
 const req = (base, method, path, { body, token, cookie } = {}) =>
@@ -394,10 +397,100 @@ test("the live trickle is per visitor, chained, and never written to the dataset
   assert.equal(plain.valid, true, "the shared dataset still verifies untouched");
 });
 
+// ---- one truth for the counts ----------------------------------------------
+
+// A system card and that system's own panel used to show two different numbers
+// for the same word, because the panel's per-file rows came from a counter that
+// only ever counted entries whose payload names a file. Both now come from the
+// log, so the parts add up to the whole. Cookieless on purpose: no visitor
+// session means no live trickle, so the two reads see the same instant.
+test("a system's file counts and its total come from one count", { skip: !HAVE_DATASET && "no generated dataset", concurrency: false }, async () => {
+  const ov = await (await fetch(demo.base + "/api/overview")).json();
+  for (const s of ov.systems) {
+    const c = await (await fetch(demo.base + "/api/system-counts?system_id=" + encodeURIComponent(s.system_id))).json();
+    assert.equal(c.total, s.entry_count, `${s.system_id}: the card total and the panel total must be the same number`);
+    const parts = Object.values(c.files).reduce((n, x) => n + x, 0) + c.other;
+    assert.equal(parts, c.total, `${s.system_id}: per-file counts plus the rest must add up to the total`);
+    for (const d of s.databases || []) {
+      assert.equal(typeof c.files[`${d.system_id}|${d.file_name}`], "number",
+        `${s.system_id}: every listed file needs a count from the same query`);
+    }
+  }
+  const cascade = await (await fetch(demo.base + "/api/system-counts?system_id=cascade-office")).json();
+  assert.ok(cascade.files["cascade-office|CascadeOps"] > 0, "the file has record-change entries");
+  assert.ok(cascade.other > 0, "and the system has event-shaped entries that belong to no file");
+});
+
+// ---- the money counters, and what people asked ------------------------------
+
+// The caps exist to protect a bill on a public URL. Both used to live in
+// process memory, so a deploy or a machine move reset every visitor to a full
+// allowance and the hourly ceiling to zero. This is the test that would have
+// caught that: kill the server, start it again, ask again.
+test("AI spend counters and captured questions survive a restart", async () => {
+  const TOKEN = "questions-token";
+  let s = await boot({ DEMO_MODE: "1", DEMO_AI_LIMIT: "2", DEMO_AI_HOURLY: "50", DEMO_QUESTIONS_TOKEN: TOKEN });
+  let cookie;
+  try {
+    const v = await visitor(s.base);
+    cookie = v.cookie;
+    for (let i = 1; i <= 2; i++) {
+      const r = await v.post("/api/ask", { messages: [{ role: "user", content: `question ${i}` }] });
+      assert.equal(r.prompts_used, i);
+    }
+    const over = await v.post("/api/ask", { messages: [{ role: "user", content: "one too many" }] });
+    assert.equal(over.quota_exhausted, true);
+
+    // every question is captured, refused ones included, and reading them back
+    // needs the token
+    assert.equal((await fetch(s.base + "/api/demo/questions")).status, 401, "the questions are not public");
+    const q = await (await fetch(s.base + "/api/demo/questions", { headers: { Authorization: `Bearer ${TOKEN}` } })).json();
+    assert.equal(q.durable, true, "the questions table must be on disk, not in memory");
+    assert.equal(q.asked, 3, "all three questions were recorded");
+    assert.equal(q.spent, 2, "only two of them cost a prompt");
+    assert.equal(q.questions[0].question, "one too many");
+    assert.equal(q.questions[0].outcome, "out_of_prompts");
+    assert.equal(q.questions[0].spent, 0);
+    assert.ok(q.questions.every((x) => x.session_id), "each question carries the session it came from");
+  } finally { stop(s, { keepDir: true }); }
+
+  // same data directory, new process: the counters must remember
+  const dir = s.dir;
+  s = await boot({ DEMO_MODE: "1", DEMO_AI_LIMIT: "2", DEMO_AI_HOURLY: "50", DEMO_QUESTIONS_TOKEN: TOKEN }, { reuseDir: dir });
+  try {
+    const again = await (await req(s.base, "POST", "/api/ask", {
+      body: { messages: [{ role: "user", content: "after the restart" }] }, cookie,
+    })).json();
+    assert.equal(again.quota_exhausted, true, "a restart must not hand this visitor a fresh allowance");
+    assert.equal(again.prompts_used, 2, "the count is the same one it was before the restart");
+    const q = await (await fetch(s.base + "/api/demo/questions", { headers: { Authorization: `Bearer ${TOKEN}` } })).json();
+    assert.equal(q.asked, 4, "and the earlier questions are still there");
+  } finally { stop(s); }
+});
+
+// The per-visitor cap protects the experience (clear the cookie and you get
+// another ten). This one protects the bill, so it has to hold across visitors,
+// and it has to say something different when it fires.
+test("the hourly cap is global across visitors and reads as its own state", async () => {
+  const s = await boot({ DEMO_MODE: "1", DEMO_AI_LIMIT: "10", DEMO_AI_HOURLY: "1" });
+  try {
+    const a = await visitor(s.base);
+    const b = await visitor(s.base);
+    const first = await a.post("/api/ask", { messages: [{ role: "user", content: "the one prompt this hour" }] });
+    assert.notEqual(first.demo_busy, true, "the first question goes through");
+    const second = await b.post("/api/ask", { messages: [{ role: "user", content: "and now the demo is out" }] });
+    assert.equal(second.demo_busy, true, "a different visitor is stopped by the global cap");
+    assert.notEqual(second.quota_exhausted, true, "which is NOT the same thing as using up your own ten");
+    assert.equal(second.prompts_used, 0, "and it costs them nothing");
+    assert.ok(second.wait_min >= 1, "the UI needs to say how long");
+    assert.match(second.reply, /hourly/i, "and the visitor is told which limit they hit");
+  } finally { stop(s); }
+});
+
 // ---- normal Clio ------------------------------------------------------------
 
 test("without DEMO_MODE the write routes are open again", async () => {
-  const normal = await boot({ DEMO_MODE: "" });
+  const normal = await boot({ DEMO_MODE: "", DEMO_QUESTIONS_TOKEN: "questions-token" });
   try {
     const r = await req(normal.base, "POST", "/v1/log", {
       body: { category: "test", action: "test.happened", payload: { n: 1 } },
@@ -406,6 +499,16 @@ test("without DEMO_MODE the write routes are open again", async () => {
     const b = await r.json();
     assert.equal(b.ok, true);
     assert.equal(b.data.accepted, 1);
+
+    // A self-hosted Clio captures nothing and offers no way to read a capture
+    // back, whatever is set in its environment. The demo's question log is the
+    // demo's, and it is Matt's own server.
+    // ?key= gets past this install's site password, so a 404 here means the
+    // route is genuinely absent rather than merely gated.
+    assert.equal((await fetch(normal.base + "/api/demo/questions?key=test-site-password")).status, 404,
+      "the questions route must not exist outside the demo");
+    assert.equal(fs.existsSync(path.join(normal.dir, "demo-state.db")), false,
+      "and no capture file is created");
   } finally {
     stop(normal);
   }

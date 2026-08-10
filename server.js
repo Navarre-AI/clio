@@ -18,6 +18,7 @@ import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, setA
 import { diffRecords } from "./diff.js";
 import { runRules, dryRun, createRule, listRules, updateRule, ruleFirings, ruleMatches, seedDefaultRules } from "./rules.js";
 import * as demoSession from "./demo/demosession.js";
+import * as demoState from "./demo/demostate.js";
 import { liveFor } from "./demo/demolive.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,6 +40,13 @@ const DEMO_AI_MODEL = process.env.DEMO_AI_MODEL || "claude-haiku-4-5"; // cheape
 const DEMO_AI_MAX_TOKENS = Number(process.env.DEMO_AI_MAX_TOKENS || 1000);
 const DEMO_AI_MAX_HOPS = Number(process.env.DEMO_AI_MAX_HOPS || 4);
 const DEMO_LINK = process.env.DEMO_LINK || "https://www.navarre.ai";
+// Where the demo's durable state lives (see demo/demostate.js): the AI spend
+// counters and the captured questions. A Fly volume in production, DATA_DIR
+// locally so a dev run and the test suite need no extra setup. Never the baked
+// dataset's business: that file stays read-only and pristine.
+const DEMO_STATE_DIR = process.env.DEMO_STATE_DIR || process.env.DATA_DIR || "";
+// Reading back what visitors asked. Off unless the secret is set.
+const DEMO_QUESTIONS_TOKEN = process.env.DEMO_QUESTIONS_TOKEN || "";
 
 const ADMIN_TOKEN = DEMO_MODE ? "" : (process.env.ADMIN_TOKEN || "");
 const SITE_PASSWORD = DEMO_MODE ? "" : (process.env.SITE_PASSWORD || "");
@@ -49,6 +57,8 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"),
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const DB_PATH = path.join(DATA_DIR, "clio.db");
 const db = openDb(DB_PATH);
+// The demo's durable side-file. Opened before any route can need it.
+if (DEMO_MODE) demoState.open(DEMO_STATE_DIR || DATA_DIR);
 let dbRead = null; // opened lazily; the file must exist first
 function readHandle() { return (dbRead ||= openDbReadOnly(DB_PATH)); }
 
@@ -110,6 +120,10 @@ function selfLog(event, fields = {}) {
     payload_json: JSON.stringify(fields),
   };
   console.log(JSON.stringify({ level: "audit", action: entry.action, ...fields }));
+  // Name Clio's own chain the first time it has anything on it. Not at boot: an
+  // install's own log starts empty and only becomes a card once a real
+  // administrative act has been recorded on it.
+  try { db.prepare("INSERT INTO systems (system_id, label) VALUES ('clio', 'Clio (this log server)') ON CONFLICT(system_id) DO NOTHING").run(); } catch {}
   appendBatch(db, "clio", [entry]);
   emit(); // clio's own activity is live too
 }
@@ -884,8 +898,7 @@ app.get("/api/ai", async (req, res) => {
   const body = { available: aiOn(), demo: DEMO_MODE, model: currentModel(), models, fallback,
     thinking: cfg.thinking, speed: cfg.speed, key_set: cfg.key_override };
   if (DEMO_MODE) {
-    const s = sess(req);
-    body.prompts_used = s.aiUsed;
+    body.prompts_used = demoAiUsed(req);
     body.prompts_limit = DEMO_AI_LIMIT;
     body.link = DEMO_LINK;
   }
@@ -1149,8 +1162,53 @@ app.get("/api/overview", (req, res) => {
   // Unplaced files (any system) drive the new-database wizard.
   const unplaced = db.prepare("SELECT system_id, file_name, entry_count, last_seen FROM databases WHERE placed = 0 ORDER BY last_seen DESC").all();
   res.json({ systems, ai: aiOn(), demo: DEMO_MODE, version: VERSION, unplaced,
-    ...(DEMO_MODE ? { demo_ai: { limit: DEMO_AI_LIMIT, used: sess(req).aiUsed, link: DEMO_LINK } } : {}),
+    ...(DEMO_MODE ? { demo_ai: { limit: DEMO_AI_LIMIT, used: demoAiUsed(req), link: DEMO_LINK } } : {}),
     tagline: "FileMaker logging for the AI Age." });
+});
+
+// One truth for "how many entries", counted in one pass over the log.
+//
+// A system card and that system's own detail panel used to disagree, because
+// they were reading two different things that were both called "entries": the
+// card showed the chain (every entry under that system id), while each file's
+// row showed databases.entry_count, a running counter maintained at ingest that
+// only ever counts entries whose payload names a file. Record changes from the
+// OnWindowTransaction script carry a file; event-shaped entries from the plain
+// Clio Log script (logins, script errors, exports) do not. So the file numbers
+// were legitimately smaller than the chain, with nothing on screen to say why,
+// and any drift between the counter and the log had nowhere to show up.
+//
+// Now both come from log_entries, so the files plus the remainder always add up
+// to the total the card shows. Linked files' separate chains fold in exactly as
+// they do on the card.
+function systemCounts(req, sid) {
+  const kids = db.prepare("SELECT DISTINCT system_id FROM databases WHERE system_display = ? AND system_id != ?").all(sid, sid).map((r) => r.system_id);
+  const ids = [sid, ...kids];
+  const rows = db.prepare(
+    `SELECT system_id, json_extract(payload_json, '$.file') AS file, COUNT(*) AS n
+       FROM log_entries WHERE system_id IN (${ids.map(() => "?").join(",")})
+      GROUP BY system_id, file`
+  ).all(...ids);
+  const files = {}; let other = 0, total = 0;
+  const add = (system_id, file, n) => {
+    total += n;
+    if (file) files[`${system_id}|${file}`] = (files[`${system_id}|${file}`] || 0) + n;
+    else other += n;
+  };
+  for (const r of rows) add(r.system_id, r.file, r.n);
+  // The visitor's own live trickle counts on the card, so it counts here too.
+  for (const r of live(req)) {
+    if (!ids.includes(r.system_id)) continue;
+    let p = {}; try { p = JSON.parse(r.payload_json); } catch {}
+    add(r.system_id, p.file || null, 1);
+  }
+  return { system_id: sid, total, files, other };
+}
+
+app.get("/api/system-counts", (req, res) => {
+  const sid = String(req.query.system_id || "");
+  if (!sid) return res.status(400).json({ error: "system_id required" });
+  res.json(systemCounts(req, sid));
 });
 
 // Live push: the browser opens this once; every append writes an event and the
@@ -1563,41 +1621,67 @@ app.post("/api/scan", async (req, res) => {
   }
 });
 
-// Per-visitor prompt cap for the demo. Counted server-side, against the session
-// cookie, and spent BEFORE the model call, so a visitor cannot get free prompts
-// by aborting the request or by editing anything the browser can reach.
-// Global hourly ceiling across ALL visitors. The per-visitor cap above is
-// bypassable (clear the cookie, get 10 more), so it protects the experience,
-// not the bill. This one protects the bill: a sliding one-hour window of
-// timestamps, spent before the model call, same as the per-visitor cap.
-const demoAiHits = [];
+// Two caps, both counted server-side and both spent BEFORE the model call, so
+// no prompt is free because a visitor aborted the request or edited something
+// the browser can reach.
+//
+//   per visitor  DEMO_AI_LIMIT prompts against the session cookie. Bypassable by
+//                clearing the cookie, so it protects the experience, not the bill.
+//   per hour     DEMO_AI_HOURLY prompts across ALL visitors, sliding window.
+//                This one protects the bill, and nothing a visitor can do
+//                touches it.
+//
+// Both counts come from the durable questions table (demo/demostate.js), NOT
+// from process memory: they used to be a field on an in-memory session and an
+// in-process array, which meant every deploy or machine restart handed every
+// visitor a fresh allowance and set the hourly ceiling back to zero.
+const demoAiUsed = (req) => (DEMO_MODE ? demoState.sessionUsed(req.demoSid || "") : 0);
+
 function hourlyQuota() {
-  const cutoff = Date.now() - 3600_000;
-  while (demoAiHits.length && demoAiHits[0] < cutoff) demoAiHits.shift();
-  if (demoAiHits.length >= DEMO_AI_HOURLY) {
-    // Minutes until the oldest hit ages out of the window.
-    const waitMin = Math.max(1, Math.ceil((demoAiHits[0] + 3600_000 - Date.now()) / 60_000));
-    return { ok: false, waitMin };
+  const h = demoState.hourly();
+  if (h.count >= DEMO_AI_HOURLY) {
+    // Minutes until the oldest spend in the window ages out.
+    return { ok: false, waitMin: Math.max(1, Math.ceil((h.oldest + 3600_000 - Date.now()) / 60_000)) };
   }
-  demoAiHits.push(Date.now());
   return { ok: true };
 }
 
-function askQuota(req) {
+// Spends a prompt if both caps allow it, and records the question either way:
+// a refused question is still a question somebody wanted to ask.
+function askQuota(req, question) {
   if (!DEMO_MODE) return { ok: true };
-  const s = sess(req);
-  if (s.aiUsed >= DEMO_AI_LIMIT) return { ok: false, used: s.aiUsed, limit: DEMO_AI_LIMIT };
+  const sid = req.demoSid || "";
+  const ip_hash = demoState.ipHash(req.ip);
+  const used = demoState.sessionUsed(sid);
+  if (used >= DEMO_AI_LIMIT) {
+    demoState.record({ session_id: sid, ip_hash, question, spent: 0, outcome: "out_of_prompts", session_used: used });
+    return { ok: false, used, limit: DEMO_AI_LIMIT };
+  }
   const global = hourlyQuota();
   if (!global.ok) {
-    return { ok: false, used: s.aiUsed, limit: DEMO_AI_LIMIT, busy: true, waitMin: global.waitMin };
+    demoState.record({ session_id: sid, ip_hash, question, spent: 0, outcome: "hourly_cap", session_used: used });
+    return { ok: false, used, limit: DEMO_AI_LIMIT, busy: true, waitMin: global.waitMin };
   }
-  s.aiUsed++;
-  return { ok: true, used: s.aiUsed, limit: DEMO_AI_LIMIT };
+  const id = demoState.record({ session_id: sid, ip_hash, question, spent: 1, outcome: "pending", session_used: used + 1 });
+  return { ok: true, used: used + 1, limit: DEMO_AI_LIMIT, askId: id };
 }
+
+const finishAsk = (quota, fields) => { if (DEMO_MODE && quota.askId) demoState.finish(quota.askId, fields); };
+
+// The last thing in the message list is what the visitor just typed.
+const lastUserText = (messages) => {
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i]?.role === "user") return String(messages[i].content || "");
+  return "";
+};
 
 app.post("/api/ask", async (req, res) => {
   try {
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
     if (!aiOn()) {
+      if (DEMO_MODE && messages.length) {
+        demoState.record({ session_id: req.demoSid || "", ip_hash: demoState.ipHash(req.ip),
+          question: lastUserText(messages), spent: 0, outcome: "ai_off", session_used: demoAiUsed(req) });
+      }
       return res.json({
         reply: DEMO_MODE
           ? "Ask the logs is unavailable right now: this demo runs on a spend-capped API key and one is not configured at the moment. Everything else here is live."
@@ -1605,9 +1689,8 @@ app.post("/api/ask", async (req, res) => {
         artifacts: [],
       });
     }
-    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
     if (!messages.length) return res.status(400).json({ error: "messages required" });
-    const quota = askQuota(req);
+    const quota = askQuota(req, lastUserText(messages));
     if (!quota.ok) {
       // Two different refusals: this visitor is out, or the whole demo is
       // out for the hour. Say which, so nobody thinks they broke it.
@@ -1616,6 +1699,7 @@ app.post("/api/ask", async (req, res) => {
         : `That's all ${quota.limit} questions for this demo session. The full Clio has no cap: it answers from your own logs, on your own server. ${DEMO_LINK}`;
       return res.json({
         reply, artifacts: [], quota_exhausted: !quota.busy, demo_busy: !!quota.busy,
+        wait_min: quota.waitMin || null,
         prompts_used: quota.used, prompts_limit: quota.limit,
       });
     }
@@ -1623,16 +1707,35 @@ app.post("/api/ask", async (req, res) => {
     // on the failure path too: a visitor must never see "0 used" after a call
     // that was, in fact, charged against their allowance.
     const counters = DEMO_MODE ? { prompts_used: quota.used, prompts_limit: quota.limit } : {};
+    const t0 = Date.now();
     try {
       const out = await askLogs(readHandle(), messages);
+      finishAsk(quota, { outcome: "answered", ms: Date.now() - t0 });
       res.json({ ...out, ...counters });
     } catch (e) {
+      finishAsk(quota, { outcome: "error", ms: Date.now() - t0, error: e.message || e });
       res.status(200).json({ reply: "", error: String(e.message || e), ...counters });
     }
   } catch (e) {
     res.status(200).json({ reply: "", error: String(e.message || e) });
   }
 });
+
+// Reading back what visitors asked the demo. Matt's own server, Matt's own
+// questions log: it exists so he can see what people actually want from their
+// logs. Registered only in DEMO_MODE, and only when the token secret is set, so
+// a self-hosted Clio has no such route at all.
+//
+//   curl -s -H "Authorization: Bearer $DEMO_QUESTIONS_TOKEN" \
+//     https://clio-demo.fly.dev/api/demo/questions | jq
+if (DEMO_MODE && DEMO_QUESTIONS_TOKEN) {
+  app.get("/api/demo/questions", (req, res) => {
+    if (!constantTimeEqual(bearer(req), DEMO_QUESTIONS_TOKEN)) {
+      return fail(res, 401, "unauthorized", "Bearer DEMO_QUESTIONS_TOKEN required.");
+    }
+    res.json({ ...demoState.stats(), questions: demoState.recent(req.query.limit) });
+  });
+}
 
 // ---- error handler ----------------------------------------------------------
 

@@ -53,6 +53,25 @@ holds the history, and each one checks the other.
 - It runs in your own cloud account. There is no multi-tenant anything, no
   vendor with a master key.
 
+## Nothing phones home
+
+Your Clio makes an outbound request to exactly two places, both of which you
+choose: Anthropic, if and only if you set an API key (that is "ask the logs",
+and it sends the query results the model asked for), and the Slack or webhook
+URL you type into Settings, if you type one in. That is the complete list.
+There is no telemetry, no usage ping, no crash reporter, no licence check, no
+analytics, and no update check.
+Nothing about your logs, your questions, your systems, your version, or your
+existence is reported to Matt or to anyone else, and there is no switch that
+turns such a thing on, because the code to do it is not in here. Grep for
+`fetch(` if you would rather check than take this paragraph's word for it.
+
+The one exception is not your install: **the public demo at clio-demo.fly.dev
+records the questions visitors type into it**, which is Matt's own server,
+which is why the demo's Ask box says so on screen. That capture lives in
+`demo/demostate.js`, is wired up only under `DEMO_MODE`, and writes only to
+that machine.
+
 ## What Clio does not promise
 
 - **The gap since the last anchor.** An operator with full control of the

@@ -58,8 +58,19 @@
   .msg.bot { align-self:flex-start; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); }
   .msg.meta { align-self:center; color:var(--muted); font-size:12.5px; background:none; }
   .composer { border-top:1px solid var(--line); padding:14px 26px; display:flex; justify-content:center; }
-  .composer .inner { max-width:940px; width:100%; display:flex; gap:9px; }
-  .composer textarea { flex:1; resize:none; height:46px; border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:var(--panel); color:var(--ink); } .composer textarea:focus { outline:none; border-color:var(--accent2); }
+  .composer .inner { max-width:940px; width:100%; display:flex; gap:9px; align-items:flex-start; }
+  /* The box you type in owns its own footnote row (how many demo questions are
+     left, and that they are recorded). Inside the border, right-aligned, and on
+     its own line, so it can never sit on top of what is being typed and can
+     never be clipped by the composer's width at any viewport. */
+  .askbox { flex:1; min-width:0; display:flex; flex-direction:column; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+  .askbox:focus-within { border-color:var(--accent2); }
+  /* Two lines tall to start: the prompt wraps in a narrow window, and a box
+     that clips its own placeholder looks broken. It grows from here (askGrow). */
+  .askbox textarea { width:100%; box-sizing:border-box; resize:none; height:56px; border:0; background:transparent; color:var(--ink); font:inherit; padding:11px 14px 3px; }
+  .askbox textarea:focus { outline:none; }
+  .askmeta { display:none; flex-wrap:wrap; gap:4px 14px; justify-content:space-between; padding:0 14px 8px; font-size:11.5px; line-height:1.4; color:var(--dim); }
+  .askmeta .q { margin-left:auto; text-align:right; }
   .sendbtn { background:linear-gradient(135deg,var(--accent2),var(--accent)); color:#fff; border-radius:12px; padding:0 20px; font-weight:600; } .sendbtn:hover { filter:brightness(1.07); }
   .scroll { overflow-x:auto; }
   .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
@@ -165,7 +176,7 @@
       <div class="pulsebar"><svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div><div class="ptext" id="pulseText">Reading the room…</div><div class="pmeta" id="pulseMeta"></div></div></div>
       <div id="thread"></div>
     </div>
-    <div class="composer"><div class="inner"><textarea id="askInput" placeholder="Who deleted invoices this week? Any weekend logins?"></textarea><button class="sendbtn" id="askBtn">Ask</button></div><div class="quiet" id="askQuota" style="display:none;text-align:center;padding:6px 0 0"></div></div>
+    <div class="composer"><div class="inner"><div class="askbox"><textarea id="askInput" rows="1" placeholder="Who deleted invoices this week?"></textarea><div class="askmeta" id="askMeta"><span class="n" id="askNotice"></span><span class="q" id="askQuota"></span></div></div><button class="sendbtn" id="askBtn">Ask</button></div></div>
   </div>
 
   <div class="view" id="v-log"><div class="wrap wide">
@@ -291,7 +302,7 @@ function displayName(d) { if(!d||typeof d!=="object")return "";
   for(const k of ["Company Name","Name","Title","Task Name","Note","field_name"]) if(d[k]&&!metaValue(d[k])) return String(d[k]).slice(0,60);
   for(const [k,v] of Object.entries(d)){ if(/id$|^id|^z_/i.test(k)||isHousekeepingF(k))continue; if(typeof v==="string"&&v&&v.length<50&&!metaValue(v))return v; }
   return ""; }
-const CLIO_ACTIONS = { "clio.scan.run":"watchdog scan ran", "clio.admin.key_minted":"API key minted", "clio.admin.system_created":"system created", "clio.admin.system_confirmed":"system confirmed", "clio.admin.archive":"log archived", "clio.admin.purge":"records purged", "clio.admin.key_revoked":"API key revoked" };
+const CLIO_ACTIONS = { "clio.scan.run":"watchdog scan ran", "clio.admin.key_minted":"API key minted", "clio.admin.system_created":"system created", "clio.admin.system_registered":"system registered", "clio.admin.archive_created":"log archived", "clio.verify.failed":"chain verification FAILED", "clio.admin.system_confirmed":"system confirmed", "clio.admin.archive":"log archived", "clio.admin.purge":"records purged", "clio.admin.key_revoked":"API key revoked" };
 function friendlyAction(a) { if(/\s/.test(a))return a;
   if(CLIO_ACTIONS[a])return CLIO_ACTIONS[a];
   if(a.startsWith("clio."))return a.slice(5).replace(/[_.]/g," ");
@@ -327,11 +338,24 @@ function applyDemo(){ if(demoApplied)return; demoApplied=true; DEMO=true;
   // Settings still opens (it is worth seeing) but nothing in it can be saved.
   for(const id of ["chSlack","chSave","chTest","aiModel","aiThinking","aiFast","aiKey"]){ const e=$(id); if(e) e.disabled=true; }
 }
-// "3 of 10 questions used" under the Ask box, so the cap is never a surprise.
-function renderQuota(){ if(!DEMO||!DEMO_AI||!ov.ai)return; const el=$("askQuota"); if(!el)return;
+// The footnote row inside the Ask box: what this visit has left, and the fact
+// that the question is recorded. Both live in the box rather than under it,
+// where the old counter was being clipped by the composer's flex row.
+function renderQuota(){ if(!DEMO||!DEMO_AI||!ov.ai)return;
+  const el=$("askQuota"), row=$("askMeta"), note=$("askNotice"); if(!el||!row)return;
   const left=Math.max(0,DEMO_AI.limit-DEMO_AI.used);
-  el.innerHTML=left?`${left} of ${DEMO_AI.limit} demo questions left`:`Demo questions used up. <a href="${esc(DEMO_AI.link||"https://www.navarre.ai")}" style="color:var(--accent2)">Talk to Matt about running Clio on your own logs</a>.`;
-  el.style.display=""; }
+  // The demo runs on Matt's key and his bill, so it says so, and it says that
+  // the questions are kept. A tool whose pitch is "your logs stay yours" does
+  // not get to be coy about the one place it keeps something of yours.
+  if(note) note.textContent="Questions here are recorded, so Matt can see what people ask their logs.";
+  // Three states: questions left, the whole demo paused for the hour (the
+  // global cap, which is nobody's fault and comes back), and this visit spent.
+  const busyMin=DEMO_AI.busyUntil?Math.max(1,Math.ceil((DEMO_AI.busyUntil-Date.now())/60000)):0;
+  if(busyMin>0&&DEMO_AI.busyUntil>Date.now()){
+    el.innerHTML=`<span title="Every visitor shares an hourly limit on this demo. Yours are not spent.">demo paused ~${busyMin} min · your ${left} of ${DEMO_AI.limit} kept</span>`;
+  } else if(left){ el.textContent=`${left} of ${DEMO_AI.limit} demo questions left`; }
+  else el.innerHTML=`No questions left. <a href="${esc(DEMO_AI.link||"https://www.navarre.ai")}" style="color:var(--accent2)">Run Clio on your own logs</a>`;
+  row.style.display="flex"; }
 
 async function loadOverview() {
   ov = await j("/api/overview");
@@ -354,12 +378,24 @@ async function loadOverviewQuiet(){ try{ ov=await j("/api/overview"); }catch{} }
 async function openSystem(sid) {
   // Render the detail instantly from logs (limit 6). The full-chain verify can be
   // 169k+ entries, so it runs AFTER the modal is up and fills in its badge async.
-  const logs = await j("/api/logs?system_id="+encodeURIComponent(sid)+"&limit=6").catch(()=>({entries:[]}));
+  const [logs, counts] = await Promise.all([
+    j("/api/logs?system_id="+encodeURIComponent(sid)+"&limit=6").catch(()=>({entries:[]})),
+    // Every "entries" number in this panel comes from here, so the per-file
+    // rows and the system total are the same count and visibly add up.
+    j("/api/system-counts?system_id="+encodeURIComponent(sid)).catch(()=>null),
+  ]);
   const s = ov.systems.find((x)=>x.system_id===sid) || { system_id:sid, databases:[] };
+  const total = counts ? counts.total : (s.entry_count||0);
+  const fileN = (d)=>counts ? (counts.files[(d.system_id||sid)+"|"+d.file_name]||0) : d.entry_count;
   const files=(s.databases||[]).filter((d)=>d.placed);
-  const fileRows = files.length ? files.map((d)=>{const fsid=d.system_id||sid;return DEMO
-      ? `<div class="dbrow"><span style="flex:1;font-weight:600">${esc(d.name)}</span><span class="dbc">${fmtN(d.entry_count)} entries${d.linked?" · linked":""}</span></div>`
-      : `<div class="dbrow"><input class="input" style="padding:5px 9px" value="${esc(d.name)}" onchange="renameFile('${esc(fsid)}','${esc(d.file_name)}',this.value)"><span class="dbc">${fmtN(d.entry_count)} entries${d.linked?" · linked":""}</span><button class="link" onclick="unlinkFile('${esc(fsid)}','${esc(d.file_name)}')">unlink</button></div>`;}).join("") : '<div class="quiet">No files yet.</div>';
+  let fileRows = files.length ? files.map((d)=>{const fsid=d.system_id||sid;return DEMO
+      ? `<div class="dbrow"><span style="flex:1;font-weight:600">${esc(d.name)}</span><span class="dbc">${fmtN(fileN(d))} entries${d.linked?" · linked":""}</span></div>`
+      : `<div class="dbrow"><input class="input" style="padding:5px 9px" value="${esc(d.name)}" onchange="renameFile('${esc(fsid)}','${esc(d.file_name)}',this.value)"><span class="dbc">${fmtN(fileN(d))} entries${d.linked?" · linked":""}</span><button class="link" onclick="unlinkFile('${esc(fsid)}','${esc(d.file_name)}')">unlink</button></div>`;}).join("") : '<div class="quiet">No files yet.</div>';
+  // The rest of the chain: logins, script errors, exports. Anything the Clio Log
+  // script sends names an action, not a file, so it belongs to the system rather
+  // than to one database. Shown, rather than left as an unexplained shortfall
+  // against the total.
+  if (counts && counts.other) fileRows += `<div class="dbrow"><span style="flex:1;color:var(--muted)">Events not tied to a file <span class="sub">(logins, errors, exports)</span></span><span class="dbc">${fmtN(counts.other)} entries</span></div>`;
   const tail = (logs.entries||[]).map((e)=>{let p={};try{p=JSON.parse(e.payload_json);}catch{} const c=crud(e.action,p),h=humanLine(e); return `<div class="row" style="box-shadow:none"><span class="t">${localHM(e.ts_server)}</span><span class="tag ${c.cls}">${c.tag}</span><span class="main">${h.who?esc(h.who)+" ":""}<span class="did">${esc(redact(h.text))}</span></span></div>`;}).join("") || '<div class="quiet">No entries yet.</div>';
   const TZ=[["","(not set)"],["-8","Pacific (UTC-8)"],["-5","Eastern (UTC-5)"],["0","UTC"],["1","London/CET (UTC+1)"],["3","Athens/Crete (UTC+3)"]];
   const nameCard = DEMO ? `
@@ -374,7 +410,7 @@ async function openSystem(sid) {
   modal(s.label||sid, `${nameCard}
     <div class="scard" style="margin-top:12px"><div class="scard-h">Database files</div>${fileRows}</div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Log</div>
-      <div class="setrow"><label>Entries</label><span>${fmtN(s.entry_count||0)}</span></div>
+      <div class="setrow"><label>Entries</label><span>${fmtN(total)}</span></div>
       <div class="setrow"><label>Status</label><span class="badge b-info" id="verStatus">checking…</span></div></div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Recent activity <span class="sub">(values redacted)</span></div><div class="feed">${tail}</div></div>
     ${DEMO?"":`<div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div><div class="setrow"><button class="btn ghost sm" onclick="archiveSystem('${esc(sid)}')">Archive log</button><button class="link danger" onclick="purgeSystem('${esc(sid)}')">Delete all records…</button></div><div id="sysDanger"></div></div>`}`);
@@ -442,9 +478,15 @@ function artifactHtml(a){
   return "";
 }
 function renderThread(){ $("thread").innerHTML=askMessages.map((m)=>m.role==="user"?`<div class="msg user">${esc(m.content)}</div>`:`<div class="msg bot">${renderMd(m.content)}${(m.artifacts||[]).map(artifactHtml).join("")}</div>`).join(""); $("thread").lastElementChild?.scrollIntoView({block:"end"}); }
-async function askSend(){ const q=$("askInput").value.trim(); if(!q)return; $("askInput").value=""; askMessages.push({role:"user",content:q}); renderThread(); $("thread").insertAdjacentHTML("beforeend",`<div class="msg meta" id="thinking">reading the logs…</div>`); const r=await post("/api/ask",{messages:askMessages.map((m)=>({role:m.role,content:m.content}))}); $("thinking")?.remove(); askMessages.push({role:"assistant",content:r.error?("Something went wrong: "+r.error):(r.reply||"…"),artifacts:r.artifacts||[]}); renderThread();
-  if(DEMO&&r.prompts_limit){ DEMO_AI={limit:r.prompts_limit,used:r.prompts_used,link:DEMO_AI?.link}; renderQuota(); } }
+async function askSend(){ const q=$("askInput").value.trim(); if(!q)return; $("askInput").value=""; askGrow(); askMessages.push({role:"user",content:q}); renderThread(); $("thread").insertAdjacentHTML("beforeend",`<div class="msg meta" id="thinking">reading the logs…</div>`); const r=await post("/api/ask",{messages:askMessages.map((m)=>({role:m.role,content:m.content}))}); $("thinking")?.remove(); askMessages.push({role:"assistant",content:r.error?("Something went wrong: "+r.error):(r.reply||"…"),artifacts:r.artifacts||[]}); renderThread();
+  if(DEMO&&r.prompts_limit){ DEMO_AI={limit:r.prompts_limit,used:r.prompts_used,link:DEMO_AI?.link,
+    busyUntil:r.demo_busy?Date.now()+(r.wait_min||1)*60000:0}; renderQuota(); } }
 $("askBtn").onclick=askSend; $("askInput").onkeydown=(e)=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askSend();}};
+// The box grows with the question instead of clipping it, at any width. Long
+// questions push the footnote row down; they never run underneath it.
+function askGrow(){ const t=$("askInput"); if(!t)return; t.style.height="auto"; t.style.height=Math.max(56,Math.min(t.scrollHeight,170))+"px"; }
+$("askInput").addEventListener("input",askGrow);
+addEventListener("resize",askGrow);
 async function pollPulse(){ try{ const p=await j("/api/pulse"); if(p.summary){ $("pulseText").textContent=p.summary; $("pulseMeta").textContent=`${p.stats.events_last_24h} events / 24h · ${p.stats.open_warnings} open`; } }catch{} }
 async function pollRejects(){ try{ const {rejects}=await j("/api/rejects"); if(!rejects||!rejects.length){ $("rejectBanner").innerHTML=""; return; } const recent=rejects.slice(0,4).map((r)=>`<div style="font-size:12px">${localTime(r.ts)} · <b>${esc(r.code)}</b> · ${esc(r.message||"")}</div>`).join(""); $("rejectBanner").innerHTML=`<div class="banner bad"><div style="display:flex;align-items:center;width:100%;gap:10px"><b>${rejects.length} rejected post${rejects.length===1?"":"s"}</b>, refused (usually a wrong API key or URL)<button class="btn ghost sm" style="margin-left:auto" onclick="ackRejects()">Acknowledge</button></div>${recent}</div>`; }catch{} }
 async function ackRejects(){ $("rejectBanner").innerHTML=""; await post("/api/rejects/ack",{}); pollRejects(); }
