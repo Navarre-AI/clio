@@ -1,7 +1,20 @@
 # Spec: the one-line installer
 
-What `curl -fsSL https://navarre.ai/get/clio | sh` has to do. macOS only for
-now. Pythia's equivalent is the reference: it installs the Fly CLI if needed,
+What `curl -fsSL https://navarre.ai/get/clio | sh` has to do. macOS first,
+Windows the same shape with its own one-liner.
+
+The user gets here by copying the command off the setup page and pasting it
+into a terminal themselves. Nothing launches it for them; see
+`docs/FMP12-SPEC.md` for why.
+
+**Creating the Fly account is not automatable, and that is fine.** Run
+`flyctl auth signup` (or `login`), which opens a browser at Fly's own page. The
+human makes the account in their own name, accepts Fly's terms, and adds their
+own payment method; the CLI catches the token and the script continues. No
+third party can or should do that on someone's behalf. It is the same fact as
+Matt having no access to their logs: their account, their card, their volume,
+their data. Say it on the setup page as a feature rather than apologising for
+it. Pythia's equivalent is the reference: it installs the Fly CLI if needed,
 deploys to the user's own Fly account with Fly building in the cloud, and opens
 the browser. Nothing lands on the user's machine but flyctl.
 

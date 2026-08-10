@@ -35,24 +35,35 @@ These are the shell. They exist to get the user installed and to prove it works.
 
 | Script | Does |
 |---|---|
-| `Install Clio` | Launches the installer. Platform-specific, see below. |
 | `Test Connection` | Calls `GET /v1/check/<code>`, reports the app and system it reached. Writes nothing. |
 | `Open Dashboard` | Open URL to their Clio in the default browser. |
 
-### Launching the installer, per platform
+### Installing: the page shows the command, the user pastes it
 
-Verified against Claris help, 2026-08-10.
+There is no `Install` script. The setup page displays the one-liner with a copy
+button; the user opens Terminal and pastes. Identical on macOS and Windows.
 
-**macOS**: `Perform AppleScript`, telling Terminal to run the curl one-liner.
-One step, nothing written to disk. This is what gets built first.
+This was reconsidered and settled on 2026-08-10. The rejected alternative was
+having FileMaker launch it: `Perform AppleScript` on macOS, and on Windows an
+Export Field Contents to write a `.bat` followed by `Send Event` to open it,
+since Send Event opens documents and applications but cannot run a command.
 
-**Windows**: `Send Event` can only *open a document or application*; it cannot
-run an arbitrary command. So the path is Export Field Contents to write a small
-`.bat` to a temp location, then `Send Event` to open it. Two steps, no plugin,
-and a `.bat` sidesteps the PowerShell execution-policy problem a `.ps1` would
-hit. Send Event is FileMaker Pro only: no Go, no WebDirect, no Server.
+Why not, in order of weight:
 
-Not blocked on Windows, just a different mechanism and one more moving part.
+1. A product whose pitch is "you can audit this" should not have its first act
+   be invisibly driving a terminal. The user should see the command before it
+   runs.
+2. `Perform AppleScript` fires the macOS automation prompt, "FileMaker Pro
+   wants to control Terminal", at the exact moment trust is being asked for.
+3. It splits the file's behaviour by platform for no gain.
+
+Also offer the two-step form on that page: download the script, read it, then
+run it. Some of Clio's audience will not pipe curl into sh, and they are
+precisely the people this product is for.
+
+The `.fmp12` is still the front door. It hands over the command instead of
+executing it, which was the valuable part: a FileMaker developer starts where
+they already are and never hunts for a URL.
 
 **Open URL, not a Web Viewer, for the dashboard.** A Web Viewer cannot reliably
 answer a Basic auth challenge, so it would force `?key=<site password>` into
