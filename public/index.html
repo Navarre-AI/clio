@@ -67,6 +67,8 @@
   .askbox:focus-within { border-color:var(--accent2); }
   /* Two lines tall to start: the prompt wraps in a narrow window, and a box
      that clips its own placeholder looks broken. It grows from here (askGrow). */
+  #sideResize { flex:none; width:5px; margin-left:-3px; cursor:col-resize; z-index:5; }
+  #sideResize:hover, #sideResize.drag { background:var(--accent2); opacity:.5; }
   .askbox textarea { width:100%; box-sizing:border-box; resize:none; height:56px; border:0; background:transparent; color:var(--ink); font:inherit; padding:11px 14px 3px; }
   .askbox textarea:focus { outline:none; }
   .askmeta { display:none; flex-wrap:wrap; gap:4px 14px; justify-content:space-between; padding:0 14px 8px; font-size:11.5px; line-height:1.4; color:var(--dim); }
@@ -160,6 +162,7 @@
   </div>
   <div class="side-foot"><div class="footrow"><button class="footbtn" id="settingsBtn"><span>⚙</span> Settings</button><button class="footbtn" id="themeBtn" style="margin-left:auto" title="Theme">◐</button></div><div class="footinfo" id="footInfo"></div></div>
 </aside>
+<div id="sideResize" title="Drag to resize"></div>
 
 <main class="main">
   <div class="demobar" id="demoBanner" style="display:none"></div>
@@ -686,15 +689,27 @@ function showDraft(draft,preview){ pendingDraft=draft; const fired=preview?`Woul
 }
 
 // ---- warnings ----
-let warnShowAcked=false;
+let warnShowAcked=false, warnSys=null;
 async function loadWarnings(){ const w=await j("/api/warnings"+(warnShowAcked?"?status=all":""));
-  const open=w.warnings.filter((x)=>x.status!=="acknowledged");
-  const cnt=$("warnCnt"); cnt.style.display=open.length?"":"none"; cnt.textContent=open.length;
-  const bar=`<div class="bar">${open.length?`<button class="btn sm" onclick="ackAllW()">Dismiss all (${open.length})</button>`:""}<button class="btn ghost sm" onclick="warnShowAcked=!warnShowAcked;loadWarnings()">${warnShowAcked?"Hide acknowledged":"Show acknowledged"}</button>${DEMO?'<span class="quiet" style="padding:0">dismissals last for your visit</span>':""}</div>`;
-  const rows=w.warnings.length?w.warnings.map((x)=>{const a=x.status==="acknowledged";return `<div class="warning" ${a?'style="opacity:.5"':""}><span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span><div class="body"><div class="title">${esc(x.title)} ${x.class?`<span class="badge b-class">${esc(x.class)}</span>`:""}</div><div class="detail">${esc(x.detail)}</div><div class="src">${esc(sysName(x.system_id))} · ${esc(localTime(x.created_at))}</div></div>${a?'<span class="quiet" style="padding:0">acknowledged</span>':`<button class="btn ghost sm" onclick="ackW('${esc(x.id)}')">Acknowledge</button>`}</div>`;}).join(""):'<div class="quiet">No open warnings. Quiet is good.</div>';
+  const allOpen=w.warnings.filter((x)=>x.status!=="acknowledged");
+  const cnt=$("warnCnt"); cnt.style.display=allOpen.length?"":"none"; cnt.textContent=allOpen.length;
+  // Dismiss all used to ack EVERY system's warnings while the list showed them
+  // all mixed together, which on a real Clio is a permanent, irreversible ack
+  // across every client logging here. The filter and the button now agree.
+  const systems=[...new Set(w.warnings.map((x)=>x.system_id))];
+  const shown=warnSys?w.warnings.filter((x)=>x.system_id===warnSys):w.warnings;
+  const open=shown.filter((x)=>x.status!=="acknowledged");
+  const picker=systems.length>1?`<select class="btn ghost sm" onchange="warnSys=this.value||null;loadWarnings()"><option value="">All systems (${allOpen.length} open)</option>${systems.map((id)=>`<option value="${esc(id)}"${warnSys===id?" selected":""}>${esc(sysName(id))}</option>`).join("")}</select>`:"";
+  const label=warnSys?`Dismiss all ${open.length} for ${esc(sysName(warnSys))}`:`Dismiss all ${open.length}${systems.length>1?", every system":""}`;
+  const bar=`<div class="bar">${picker}${open.length?`<button class="btn sm" onclick="ackAllW()">${label}</button>`:""}<button class="btn ghost sm" onclick="warnShowAcked=!warnShowAcked;loadWarnings()">${warnShowAcked?"Hide acknowledged":"Show acknowledged"}</button>${DEMO?'<span class="quiet" style="padding:0">dismissals last for your visit</span>':""}</div>`;
+  const rows=shown.length?shown.map((x)=>{const a=x.status==="acknowledged";return `<div class="warning" ${a?'style="opacity:.5"':""}><span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span><div class="body"><div class="title">${esc(x.title)} ${x.class?`<span class="badge b-class">${esc(x.class)}</span>`:""}</div><div class="detail">${esc(x.detail)}</div><div class="src">${esc(sysName(x.system_id))} · ${esc(localTime(x.created_at))}</div></div>${a?'<span class="quiet" style="padding:0">acknowledged</span>':`<button class="btn ghost sm" onclick="ackW('${esc(x.id)}')">Acknowledge</button>`}</div>`;}).join(""):'<div class="quiet">No open warnings. Quiet is good.</div>';
   $("warnings").innerHTML=bar+rows; }
 async function ackW(id){ await post("/api/warnings/"+id+"/ack"); loadWarnings(); loadOverview(); }
-async function ackAllW(){ await post("/api/warnings/ack-all",{}); loadWarnings(); loadOverview(); }
+async function ackAllW(){
+  // Irreversible on a real install, so say exactly what is about to happen.
+  const scope=warnSys?`for ${sysName(warnSys)}`:"across EVERY system";
+  if(!DEMO&&!confirm(`Acknowledge all open warnings ${scope}? This cannot be undone.`))return;
+  await post("/api/warnings/ack-all",warnSys?{system_id:warnSys}:{}); loadWarnings(); loadOverview(); }
 
 // ---- settings ----
 $("settingsBtn").onclick=()=>{ $("settings").classList.add("open"); loadAI(); loadChannels(); };
@@ -730,6 +745,31 @@ const ABOUT = `<b>Clio: FileMaker logging for the AI Age.</b><br><br>Your FileMa
   setInterval(()=>{ loadOverview(); loadWarnings(); },60000);
   try{ const es=new EventSource(api("/api/stream")); es.addEventListener("log",()=>pollLog()); es.addEventListener("warn",()=>{ loadWarnings(); loadOverviewQuiet(); }); es.onerror=()=>{}; }catch{}
   setInterval(pollLog,8000);
+})();
+</script>
+<script>
+// Draggable master/detail divider, remembered per browser. Ported from Pythia.
+(function () {
+  const side = document.querySelector(".side"), h = document.getElementById("sideResize");
+  if (!side || !h) return;
+  const MIN = 180, MAX = 460;
+  const saved = Number(localStorage.clio_sidew);
+  if (saved >= MIN && saved <= MAX) side.style.width = saved + "px";
+  let drag = false;
+  h.addEventListener("mousedown", (e) => {
+    drag = true; h.classList.add("drag");
+    document.body.style.userSelect = "none"; e.preventDefault();
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (!drag) return;
+    const w = Math.min(MAX, Math.max(MIN, e.clientX - side.getBoundingClientRect().left));
+    side.style.width = w + "px";
+  });
+  document.addEventListener("mouseup", () => {
+    if (!drag) return;
+    drag = false; h.classList.remove("drag"); document.body.style.userSelect = "";
+    localStorage.clio_sidew = parseInt(side.style.width, 10) || "";
+  });
 })();
 </script>
 </body>
