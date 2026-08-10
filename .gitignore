@@ -14,3 +14,6 @@ demo/data/
 from-filemaker/
 *.fmp12
 HANDOFF*.md
+
+# Private repo rules for whoever works on Clio. Never publish.
+CLAUDE.md

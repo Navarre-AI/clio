@@ -19,10 +19,21 @@ const flag = (name) => {
 };
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
+// With --yes, take the default and don't ask. A BLANK default is a real
+// answer ("no Anthropic key", "no site password"), not a missing one, so it
+// must not fall through to a prompt: that hangs an unattended run.
 async function askDefault(q, def) {
-  if (flag("yes") && def) return def;
+  if (flag("yes")) return def || "";
   const a = (await rl.question(`${q}${def ? ` [${def}]` : ""}: `)).trim();
   return a || def || "";
+}
+// For answers that have no sensible default and must be chosen deliberately.
+async function askRequired(q) {
+  for (;;) {
+    const a = (await rl.question(`${q}: `)).trim();
+    if (a) return a;
+    console.log("  Required.");
+  }
 }
 const token = () => randomBytes(18).toString("base64url");
 const sh = (cmd, opts = {}) => execSync(cmd, { stdio: "inherit", cwd: __dirname, ...opts });
@@ -58,7 +69,10 @@ try { shOut("flyctl version"); } catch {
 
 const appName = String(flag("app") || await askDefault("Fly app name (unique, e.g. clio-acme)", ""));
 if (!appName) { console.error("An app name is required."); process.exit(1); }
-const region = String(flag("region") || await askDefault("Fly region", "sjc"));
+// No default region. The right one depends on where the FileMaker servers
+// that post here live, and a wrong guess is a round trip on every write.
+// https://fly.io/docs/reference/regions/
+const region = String(flag("region") || await askRequired("Fly region (e.g. fra, iad, syd; nearest your FileMaker server)"));
 const adminToken = await askDefault("Admin token (guards key minting)", token());
 const sitePassword = await askDefault("Site password for the web UI (blank = open)", token().slice(0, 12));
 const aiKey = await askDefault("Anthropic API key (blank = deterministic warnings only, no chat)", "");

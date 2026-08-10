@@ -3,7 +3,7 @@
 Tailored to the actual schema (24 base tables), read from a Save a Copy as XML
 export kept outside this repo. Those exports carry the file's whole
 AccountsCatalog, password material included, so they live in clio-deployments
-and never here. This file + the deployed Clio at **https://clio-log.fly.dev**.
+and never here. This file + the deployed Clio at **https://your-clio.fly.dev**.
 
 ## Settings
 
@@ -11,13 +11,12 @@ and never here. This file + the deployed Clio at **https://clio-log.fly.dev**.
 
 | Field | Value |
 |---|---|
-| `ClioURL` | `https://clio-log.fly.dev` |
-| `ClioAPIKey` | the `ai-demo` key (in `~/ClaudeProjects/clio-deployments/clio-log/NOTES.md`, minted 2026-07-23) |
-| `SystemID` | `ai-demo` |
+| `ClioURL` | `https://your-clio.fly.dev` |
+| `ClioAPIKey` | the connection code minted for this system (shown once at mint time) |
+| `SystemID` | the system id you chose when minting the key |
 
-The `ai-demo` system is already registered on clio-log (server
-`fm.navarre.training`, file `AI Demo DB`) with chain entry #1 appended as a
-smoke test.
+Register the system when you mint its key, naming the server and file it
+belongs to. Entry #1 lands as a smoke test.
 
 ## Which tables get the rich payload
 
@@ -97,4 +96,4 @@ Retail, IsCurrent, user), etc. Rules of thumb:
    table, on an FMS schedule (daily to start; hourly later if wanted).
 
 Then run `Clio Import Log Table` once for the old Log table, and watch
-https://clio-log.fly.dev light up.
+https://your-clio.fly.dev light up.

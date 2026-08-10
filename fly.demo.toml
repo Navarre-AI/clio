@@ -1,6 +1,6 @@
 # clio-demo: the public read-only demo instance (navarre-ai org).
 #
-#   cd ~/ClaudeProjects/clio && fly deploy --config fly.demo.toml --app clio-demo
+#   fly deploy --config fly.demo.toml --app <your-demo-app>
 #
 # (fly.toml itself is gitignored and belongs to whatever install you last set up
 # with setup.mjs, which is why the demo carries its own named config. Always cd

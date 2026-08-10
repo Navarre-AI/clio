@@ -6,8 +6,8 @@
 CREATE TABLE IF NOT EXISTS systems (
   system_id  TEXT PRIMARY KEY,
   label      TEXT,
-  fm_server  TEXT,                        -- e.g. fm.navarre.training
-  fm_file    TEXT,                        -- e.g. Clawdia
+  fm_server  TEXT,                        -- e.g. fms.example.com
+  fm_file    TEXT,                        -- e.g. Operations
   notes      TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

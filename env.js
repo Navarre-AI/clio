@@ -1,8 +1,8 @@
 // env.js: load .env with OVERRIDE semantics, no dependency.
-// Why override: dev machines in this ecosystem export ambient FM_* vars
-// (the Comm Station shell profile: FM_USER=Clawdia etc). Node's --env-file
-// refuses to override those, so Clio would silently run with the wrong
-// account. A .env file sitting in this repo is the more specific intent;
+// Why override: a dev machine may export ambient FM_* vars from its shell
+// profile (e.g. FM_USER=...). Node's --env-file refuses to override those,
+// so Clio would silently run with the wrong account. A .env file sitting in
+// this repo is the more specific intent;
 // it wins. In production (Fly) there is no .env file and secrets flow
 // through the environment untouched.
 
