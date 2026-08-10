@@ -1640,8 +1640,11 @@ const demoAiUsed = (req) => (DEMO_MODE ? demoState.sessionUsed(req.demoSid || ""
 function hourlyQuota() {
   const h = demoState.hourly();
   if (h.count >= DEMO_AI_HOURLY) {
-    // Minutes until the oldest spend in the window ages out.
-    return { ok: false, waitMin: Math.max(1, Math.ceil((h.oldest + 3600_000 - Date.now()) / 60_000)) };
+    // Minutes until the oldest spend in the window ages out. With the cap set
+    // to 0 (AI off by configuration) there is no oldest spend, so say an hour
+    // rather than NaN.
+    const oldest = h.oldest ?? Date.now();
+    return { ok: false, waitMin: Math.max(1, Math.ceil((oldest + 3600_000 - Date.now()) / 60_000)) };
   }
   return { ok: true };
 }
