@@ -10,11 +10,10 @@ writing about.
 
 What it is not: another log table. Log tables are diaries. Clio is testimony.
 
-**New here?** Ten minutes end to end: [Quick start](#quick-start-local) below
-gets the service running, `SETUP.md` covers the server, and
-`filemaker/Clio Log.md` is the one script your FileMaker file needs. Want to
-see Clio populated before you install anything? There is a live read-only demo
-at [clio-demo.fly.dev](https://clio-demo.fly.dev).
+**New here?** Start with [INSTALL.md](INSTALL.md): about ten minutes on macOS,
+and it touches nothing on your FileMaker Server. Want to see Clio populated
+before installing anything? There is a live read-only demo at
+[clio-demo.fly.dev](https://clio-demo.fly.dev).
 
 ## How it works
 
