@@ -80,6 +80,35 @@ These answer "how do I log the thing the transaction trigger never sees":
   opening and quitting are logged. The transaction trigger cannot see either.
 - A record-level example (OnRecordLoad or a button) for the same reason.
 
+## The flow the page walks the user through
+
+One Web Viewer, all the steps, in order. Step 2 does most of the work.
+
+1. **Create a Fly account.** Native button, Open URL to Fly's signup. Skipped
+   by anyone who already has one.
+2. **Open Terminal, paste the command.** The installer takes it from there:
+   installs flyctl if missing, signs in or signs up, asks the region, creates
+   the app and volume, deploys, mints the first connection code, and prints
+   the endpoint.
+3. **Paste the endpoint** into the field on the layout.
+4. **Test Connection.** Confirms the app and system it reached.
+5. **Copy the script and the field** into their own solution.
+6. **Set the trigger**, Field Name blank.
+
+### Why the buttons are native and not on the page
+
+A link inside a Web Viewer navigates *inside the Web Viewer*. Anything pointing
+at a real website (Fly signup, the dashboard) must be a FileMaker button doing
+Open URL, or the user ends up trying to sign up for Fly in a 400-pixel box.
+
+Same reasoning for copying the install command: Web Viewer clipboard access is
+the flaky link in this design, and a silent failure there means the user pastes
+nothing into Terminal and stalls at step one. The command lives in a FileMaker
+field copied natively. The page still shows it, for reading.
+
+So: the page is the whole script of the install, and three native buttons hang
+off it.
+
 ## The Web Viewer
 
 One Web Viewer, pointed at a page on the website, showing the setup
