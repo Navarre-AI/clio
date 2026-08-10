@@ -110,11 +110,30 @@ Unlisted is not secret. Assume anyone who knows the URL can read it, so nothing
 on the page is sensitive: no keys, no endpoints, no customer names. It is
 instructions only.
 
-## Layout
+## Layout: one layout, two tabs
 
-One layout, enough for the above: the Web Viewer, the three buttons, and a
-field to paste the endpoint into. Nothing else. The file is a delivery vehicle,
-not an app.
+The file has two jobs at two different times, so a tab control splits them.
+
+**Tab 1, "Start here"**: the Web Viewer with the live instructions from the
+website, including the copy button for the install command. Useful once.
+
+**Tab 2, "Your Clio"**: the endpoint field, `Test Connection`, and
+`Open Dashboard`. Useful forever. This is where someone returns six months
+later to wire up a second file or to check the log.
+
+The split earns itself because the file gets reopened. Someone adding another
+database should not scroll past instructions they already followed, and someone
+mid-install should not see a Test Connection button before there is anything to
+test.
+
+Tab 2 is also the right home for the endpoint, since it is the one per-install
+value pasted into every file they wire up. "What was my URL again" is then
+answered by opening this file rather than hunting through Terminal scrollback.
+
+`Open Dashboard` is an Open URL step, not a Web Viewer, for the reason above: a
+Web Viewer would force the master password into the file.
+
+Nothing else on the layout. The file is a delivery vehicle, not an app.
 
 ## Fields
 
