@@ -188,10 +188,25 @@ function routeSystem(body) {
   return hint ? slugify(hint) : "unfiled";
 }
 
+// Whoever holds the dashboard password already controls this Clio: they can
+// read every entry, and they own the Fly account it runs on. A second token in
+// front of "mint a code" and "purge" therefore defended against nobody, and
+// cost every install a third secret to store and a browser prompt to meet
+// weeks later. So the site password is sufficient here.
+//
+// The token still works when set, for scripts and for anyone who wants the
+// admin surface reachable without the dashboard.
+//
+// What this deliberately does NOT do is grant admin to a read-only session:
+// see requireWrite. Reading the log and destroying it stay different powers.
 function adminAuth(req, res, next) {
-  if (!ADMIN_TOKEN) return fail(res, 503, "admin_disabled", "ADMIN_TOKEN is not set.");
-  if (!constantTimeEqual(bearer(req), ADMIN_TOKEN)) {
-    return fail(res, 401, "unauthorized", "Admin token required.");
+  const bySite = SITE_PASSWORD ? hasSiteAuth(req) : false;
+  const byToken = ADMIN_TOKEN ? constantTimeEqual(bearer(req), ADMIN_TOKEN) : false;
+  if (!bySite && !byToken) {
+    if (!ADMIN_TOKEN && !SITE_PASSWORD) {
+      return fail(res, 503, "admin_disabled", "Set SITE_PASSWORD (or ADMIN_TOKEN) to use the admin surface.");
+    }
+    return fail(res, 401, "unauthorized", "Sign in to the dashboard, or send the admin token.");
   }
   req.isAdmin = true;
   next();
@@ -348,8 +363,23 @@ if (DEMO_MODE) { app.use(demoSessionMw); app.use(demoReadOnly); }
 
 // Password gate for the UI surface only. Machine routes (/v1, /health) use
 // Bearer auth and must stay reachable by shippers and FileMaker scripts.
+const SITE_COOKIE = `clio_auth=${encodeURIComponent(SITE_PASSWORD || "")}`;
+// Has this request already proved it holds the dashboard password? Same three
+// ways the gate below accepts it, so /v1/admin and the UI agree.
+function hasSiteAuth(req) {
+  if (!SITE_PASSWORD) return false;
+  if (req.query.key === SITE_PASSWORD) return true;
+  if ((req.headers.cookie || "").split(";").some((c) => c.trim() === SITE_COOKIE)) return true;
+  const h = req.headers.authorization || "";
+  if (h.startsWith("Basic ")) {
+    const d = Buffer.from(h.slice(6), "base64").toString("utf8");
+    if (d.slice(d.indexOf(":") + 1) === SITE_PASSWORD) return true;
+  }
+  return false;
+}
+
 if (SITE_PASSWORD) {
-  const cookieVal = `clio_auth=${encodeURIComponent(SITE_PASSWORD)}`;
+  const cookieVal = SITE_COOKIE;
   app.use((req, res, next) => {
     if (req.path.startsWith("/v1/") || req.path === "/health") return next();
     // A write-shaped request outside /api/ is not a browser asking for the UI;

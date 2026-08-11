@@ -462,11 +462,14 @@ async function purgeSystem(sid){ const s=ov.systems.find((x)=>x.system_id===sid)
   closeModal(); loadOverview(); }
 
 // admin (destructive only)
-const adminTok = () => sessionStorage.getItem("clio_admin") || "";
-async function adminReq(method, path, body){ if(!adminTok()){ const t=prompt("Admin password (only needed to create keys or delete):"); if(!t) return null; sessionStorage.setItem("clio_admin",t.trim()); }
-  const r=await fetch(api(path),{method,headers:{Authorization:"Bearer "+adminTok(),"content-type":"application/json"},body:body!==undefined?JSON.stringify(body):undefined});
-  if(r.status===401){ sessionStorage.removeItem("clio_admin"); alert("That password was not accepted."); return null; } return r.json();
-}
+// The dashboard password already got us in, and the cookie rides along, so
+// nothing extra is asked for. The admin-token prompt used to appear here:
+// a browser dialog, weeks after install, for a secret nobody remembered.
+async function adminReq(method, path, body){
+  const r=await fetch(api(path),{method,headers:{"content-type":"application/json"},body:body!==undefined?JSON.stringify(body):undefined});
+  if(r.status===401){ alert("This Clio is read-only."); return null; }
+  return r.json();
+}}
 
 // modal + url helpers
 function modal(title, html){ let o=$("adhoc"); if(!o){o=document.createElement("div");o.id="adhoc";o.className="overlay";document.body.appendChild(o);} o.innerHTML=`<div class="panel auto"><div class="p-head"><span class="ttl">${esc(title)}</span><button class="x" onclick="closeModal()">✕</button></div><div class="p-list">${html}</div></div>`; o.classList.add("open"); o.onclick=null; bindCopy(); }
