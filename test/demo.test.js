@@ -581,3 +581,36 @@ test("the connection check confirms a code, and writes nothing", async () => {
     assert.equal(unfiled.data.entries.length, 0, "and a bad code must not file one either");
   } finally { stop(s); }
 });
+
+// A read-only link exists so the people who most need to read a log (an
+// auditor, a manager, a client) can, without being able to touch it.
+test("a read-only link reads everything and changes nothing", async () => {
+  const s = await boot({ VIEW_PASSWORD: "viewpw" }, { withDataset: false });
+  try {
+    const V = "?key=viewpw";
+    assert.equal((await fetch(`${s.base}/${V}`)).status, 200, "the viewer link opens the dashboard");
+    const info = await (await fetch(`${s.base}/v1/info${V}`)).json();
+
+    // Reads work.
+    assert.equal((await fetch(`${s.base}/api/overview${V}`)).status, 200, "a viewer can read");
+
+    // Every write refuses, including ones nobody has thought of: the rule is
+    // by METHOD, ahead of the routes, not a list of paths.
+    for (const [m, p] of [["POST", "/api/scan"], ["POST", "/api/prefs"],
+                          ["POST", "/api/rules"], ["DELETE", "/api/rules/x"],
+                          ["POST", "/api/warnings/ack-all"], ["POST", "/api/ai"]]) {
+      const r = await fetch(s.base + p + V, { method: m, headers: { "content-type": "application/json" }, body: "{}" });
+      assert.equal(r.status, 403, `${m} ${p} must refuse a viewer, got ${r.status}`);
+    }
+
+    // And the admin surface stays shut even though the viewer is "signed in".
+    const mint = await fetch(`${s.base}/v1/admin/keys${V}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: '{"system_id":"x"}' });
+    assert.equal(mint.status, 403, "a viewer cannot mint a connection code");
+
+    // The owner password is unaffected.
+    const owner = await fetch(`${s.base}/v1/admin/keys?key=test-site-password`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: '{"system_id":"x"}' });
+    assert.ok(owner.status < 300, "the owner still can");
+  } finally { stop(s); }
+});

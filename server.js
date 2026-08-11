@@ -39,6 +39,7 @@ const DEMO_AI_HOURLY = Number(process.env.DEMO_AI_HOURLY || 10);     // prompts 
 const DEMO_AI_MODEL = process.env.DEMO_AI_MODEL || "claude-sonnet-5"; // Haiku reasons badly over 100k log rows
 const DEMO_AI_MAX_TOKENS = Number(process.env.DEMO_AI_MAX_TOKENS || 1000);
 const DEMO_AI_MAX_HOPS = Number(process.env.DEMO_AI_MAX_HOPS || 4);
+const VIEW_PASSWORD = process.env.VIEW_PASSWORD || "";   // read-only dashboard
 const DEMO_LINK = process.env.DEMO_LINK || "https://www.navarre.ai";
 // Where the demo's durable state lives (see demo/demostate.js): the AI spend
 // counters and the captured questions. A Fly volume in production, DATA_DIR
@@ -200,6 +201,9 @@ function routeSystem(body) {
 // What this deliberately does NOT do is grant admin to a read-only session:
 // see requireWrite. Reading the log and destroying it stay different powers.
 function adminAuth(req, res, next) {
+  // Check the credential itself, not a flag set by earlier middleware: /v1/
+  // paths skip the site gate, so req.isViewer is never set for them.
+  if (req.isViewer || hasViewAuth(req)) return fail(res, 403, "read_only", "This is a read-only link.");
   const bySite = SITE_PASSWORD ? hasSiteAuth(req) : false;
   const byToken = ADMIN_TOKEN ? constantTimeEqual(bearer(req), ADMIN_TOKEN) : false;
   if (!bySite && !byToken) {
@@ -390,6 +394,31 @@ if (DEMO_MODE) {
 // Password gate for the UI surface only. Machine routes (/v1, /health) use
 // Bearer auth and must stay reachable by shippers and FileMaker scripts.
 const SITE_COOKIE = `clio_auth=${encodeURIComponent(SITE_PASSWORD || "")}`;
+const VIEW_COOKIE = `clio_view=${encodeURIComponent(VIEW_PASSWORD || "")}`;
+
+// A viewer link opens the same dashboard and changes nothing. It exists because
+// the people who most need to read a log (an auditor, a manager, a client) are
+// exactly the people who should not be able to touch it.
+function hasViewAuth(req) {
+  if (!VIEW_PASSWORD) return false;
+  if (req.query.key === VIEW_PASSWORD) return true;
+  return (req.headers.cookie || "").split(";").some((c) => c.trim() === VIEW_COOKIE);
+}
+// Read-only for a viewer, enforced as a METHOD rule ahead of every route, so a
+// write route added next year is refused the day it lands rather than the day
+// somebody notices. Same shape the demo has used since it shipped.
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+function viewerReadOnly(req, res, next) {
+  if (!req.isViewer) return next();
+  if (READ_METHODS.has(req.method)) return next();
+  // Ask the logs reads: it is the most persuasive thing in the product, and on
+  // the owner's own instance it is their key and their bill.
+  if (req.method === "POST" && req.path === "/api/ask") return next();
+  return res.status(403).json({
+    ok: false,
+    error: { code: "read_only", message: "This is a read-only link.", request_id: res.locals.requestId },
+  });
+}
 // Has this request already proved it holds the dashboard password? Same three
 // ways the gate below accepts it, so /v1/admin and the UI agree.
 function hasSiteAuth(req) {
@@ -419,6 +448,14 @@ if (SITE_PASSWORD) {
       res.setHeader("Set-Cookie", `${cookieVal}; Path=/; Max-Age=2592000; SameSite=Lax; HttpOnly${secure}`);
       return next();
     }
+    if (hasViewAuth(req)) {
+      if (req.query.key === VIEW_PASSWORD) {
+        const secure = req.secure || req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+        res.setHeader("Set-Cookie", `${VIEW_COOKIE}; Path=/; Max-Age=2592000; SameSite=Lax; HttpOnly${secure}`);
+      }
+      req.isViewer = true;
+      return next();
+    }
     const cookies = req.headers.cookie || "";
     if (cookies.split(";").some((c) => c.trim() === cookieVal)) return next();
     const header = req.headers.authorization || "";
@@ -430,6 +467,7 @@ if (SITE_PASSWORD) {
     return res.status(401).send("Authentication required. Load with ?key=<password> in a web viewer.");
   });
 }
+app.use(viewerReadOnly);
 app.use(express.static(path.join(__dirname, "public")));
 
 // ---- open routes ------------------------------------------------------------
@@ -443,8 +481,8 @@ app.get("/health", (_req, res) => {
   }
 });
 
-app.get("/v1/info", (_req, res) => {
-  res.json(ok({ name: "clio", version: VERSION, ai: aiOn(), demo: DEMO_MODE }));
+app.get("/v1/info", (req, res) => {
+  res.json(ok({ name: "clio", version: VERSION, ai: aiOn(), demo: DEMO_MODE, viewer: req.isViewer || hasViewAuth(req) }));
 });
 
 // ---- ingest -----------------------------------------------------------------
@@ -1257,6 +1295,7 @@ app.get("/api/overview", (req, res) => {
   // Unplaced files (any system) drive the new-database wizard.
   const unplaced = db.prepare("SELECT system_id, file_name, entry_count, last_seen FROM databases WHERE placed = 0 ORDER BY last_seen DESC").all();
   res.json({ systems, ai: aiOn(), demo: DEMO_MODE, version: VERSION, unplaced,
+    viewer: !!req.isViewer,
     ...(DEMO_MODE ? { demo_ai: { limit: DEMO_AI_LIMIT, used: demoAiUsed(req), link: DEMO_LINK } } : {}),
     tagline: "FileMaker logging for the AI Age." });
 });

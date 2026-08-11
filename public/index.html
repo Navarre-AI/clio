@@ -69,6 +69,8 @@
      that clips its own placeholder looks broken. It grows from here (askGrow). */
   #sideResize { flex:none; width:5px; margin-left:-3px; cursor:col-resize; z-index:5; }
   #sideResize:hover, #sideResize.drag { background:var(--accent2); opacity:.5; }
+  /* Read-only link: nothing that writes is reachable or visible. */
+  body.viewer .writes, body.viewer #addSystemBtn { display:none !important; }
   .askbox textarea { width:100%; box-sizing:border-box; resize:none; height:56px; border:0; background:transparent; color:var(--ink); font:inherit; padding:11px 14px 3px; }
   .askbox textarea:focus { outline:none; }
   .askmeta { display:none; flex-wrap:wrap; gap:4px 14px; justify-content:space-between; padding:0 14px 8px; font-size:11.5px; line-height:1.4; color:var(--dim); }
@@ -336,6 +338,17 @@ let ov = { systems:[], unplaced:[] };
 // Read-only demo (DEMO_MODE on the server). The server refuses every write on
 // its own; this just stops the UI from offering buttons that can only fail.
 let DEMO=false, demoApplied=false, DEMO_AI=null;
+let VIEWER=false;
+// Read-only link: same product, minus every control that writes. Hidden by
+// CLASS rather than a list of ids, so a button added next year is hidden too.
+function applyViewer(){
+  if(VIEWER)return; VIEWER=true;
+  document.body.classList.add("viewer");
+  const b=$("demoBanner"); if(b){ b.style.display="";
+    b.innerHTML=`<span class="dot"></span><span><b>Read-only.</b> You can read, search and ask questions. Nothing here can be changed.</span>`; }
+  const add=$("addSystemBtn"); if(add) add.style.display="none";
+  const nav=document.querySelector('[data-view="settings"]'); if(nav) nav.style.display="none";
+}
 function applyDemo(){ if(demoApplied)return; demoApplied=true; DEMO=true;
   const b=$("demoBanner"); b.style.display="";
   b.innerHTML=`<span class="dot"></span><span><b>Read-only demo.</b> Every log entry here is fictional, generated for two made-up companies. The log itself cannot be changed. Rules and warnings are yours to play with: your toggles, edits and dismissals last for your visit and reset for the next person.</span>`;
@@ -367,6 +380,7 @@ function renderQuota(){ if(!DEMO||!DEMO_AI||!ov.ai)return;
 async function loadOverview() {
   ov = await j("/api/overview");
   if(ov.demo){ if(ov.demo_ai) DEMO_AI=ov.demo_ai; applyDemo(); renderQuota(); }
+  if(ov.viewer) applyViewer();
   $("footInfo").textContent = ov.demo ? `v${ov.version} · read-only demo` : `v${ov.version} · AI ${ov.ai?"on":"off"}`;
   $("aboutBox").innerHTML = ABOUT;
   if($("lgSysPop")) buildLogFilters();
@@ -420,7 +434,7 @@ async function openSystem(sid) {
       <div class="setrow"><label>Entries</label><span>${fmtN(total)}</span></div>
       <div class="setrow"><label>Status</label><span class="badge b-info" id="verStatus">checking…</span></div></div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Recent activity <span class="sub">(values redacted)</span></div><div class="feed">${tail}</div></div>
-    ${DEMO?"":`<div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div><div class="setrow"><button class="btn ghost sm" onclick="archiveSystem('${esc(sid)}')">Archive log</button><button class="link danger" onclick="purgeSystem('${esc(sid)}')">Delete all records…</button></div><div id="sysDanger"></div></div>`}`);
+    ${DEMO?"":`<div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div><div class="setrow"><button class="btn ghost sm writes" onclick="archiveSystem('${esc(sid)}')">Archive log</button><button class="link danger writes" onclick="purgeSystem('${esc(sid)}')">Delete all records…</button></div><div id="sysDanger"></div></div>`}`);
   // background chain verify: fills the badge once done, never blocks the modal
   j("/api/verify?system_id="+encodeURIComponent(sid)).then((ver)=>{ const el=$("verStatus"); if(!el)return; el.className="badge "+(ver.valid?"b-ok":"b-bad"); el.textContent=ver.valid?"Verified ✓":("Problem at #"+ver.first_bad_seq); }).catch(()=>{ const el=$("verStatus"); if(el){ el.className="badge b-info"; el.textContent="check unavailable"; } });
 }
@@ -708,8 +722,8 @@ async function loadWarnings(){ const w=await j("/api/warnings"+(warnShowAcked?"?
   const open=shown.filter((x)=>x.status!=="acknowledged");
   const picker=systems.length>1?`<select class="btn ghost sm" onchange="warnSys=this.value||null;loadWarnings()"><option value="">All systems (${allOpen.length} open)</option>${systems.map((id)=>`<option value="${esc(id)}"${warnSys===id?" selected":""}>${esc(sysName(id))}</option>`).join("")}</select>`:"";
   const label=warnSys?`Dismiss all ${open.length} for ${esc(sysName(warnSys))}`:`Dismiss all ${open.length}${systems.length>1?", every system":""}`;
-  const bar=`<div class="bar">${picker}${open.length?`<button class="btn sm" onclick="ackAllW()">${label}</button>`:""}<button class="btn ghost sm" onclick="warnShowAcked=!warnShowAcked;loadWarnings()">${warnShowAcked?"Hide acknowledged":"Show acknowledged"}</button>${DEMO?'<span class="quiet" style="padding:0">dismissals last for your visit</span>':""}</div>`;
-  const rows=shown.length?shown.map((x)=>{const a=x.status==="acknowledged";return `<div class="warning" ${a?'style="opacity:.5"':""}><span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span><div class="body"><div class="title">${esc(x.title)} ${x.class?`<span class="badge b-class">${esc(x.class)}</span>`:""}</div><div class="detail">${esc(x.detail)}</div><div class="src">${esc(sysName(x.system_id))} · ${esc(localTime(x.created_at))}</div></div>${a?'<span class="quiet" style="padding:0">acknowledged</span>':`<button class="btn ghost sm" onclick="ackW('${esc(x.id)}')">Acknowledge</button>`}</div>`;}).join(""):'<div class="quiet">No open warnings. Quiet is good.</div>';
+  const bar=`<div class="bar">${picker}${open.length?`<button class="btn sm writes" onclick="ackAllW()" data-w="1">${label}</button>`:""}<button class="btn ghost sm" onclick="warnShowAcked=!warnShowAcked;loadWarnings()">${warnShowAcked?"Hide acknowledged":"Show acknowledged"}</button>${DEMO?'<span class="quiet" style="padding:0">dismissals last for your visit</span>':""}</div>`;
+  const rows=shown.length?shown.map((x)=>{const a=x.status==="acknowledged";return `<div class="warning" ${a?'style="opacity:.5"':""}><span class="badge b-${esc(x.severity)}">${esc(x.severity)}</span><div class="body"><div class="title">${esc(x.title)} ${x.class?`<span class="badge b-class">${esc(x.class)}</span>`:""}</div><div class="detail">${esc(x.detail)}</div><div class="src">${esc(sysName(x.system_id))} · ${esc(localTime(x.created_at))}</div></div>${a?'<span class="quiet" style="padding:0">acknowledged</span>':`<button class="btn ghost sm" data-w="1" onclick="ackW('${esc(x.id)}')">Acknowledge</button>`}</div>`;}).join(""):'<div class="quiet">No open warnings. Quiet is good.</div>';
   $("warnings").innerHTML=bar+rows; }
 async function ackW(id){ await post("/api/warnings/"+id+"/ack"); loadWarnings(); loadOverview(); }
 async function ackAllW(){
