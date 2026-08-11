@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmxmlsnippet type="FMObjectList">
+  <Field id="35" dataType="Text" fieldType="Calculated" name="onWindowTransaction">
+    <Calculation table="YourTable"><![CDATA[Let ([
+  id = PrimaryKey ;     //  Set your primary key in each table here (required)
+
+
+// nothing to set below this line 
+  mods = Get ( ModifiedFields )        // fields that changed in this commit
+
+] ;
+  While ([
+    idx = 1 ;
+    cnt = ValueCount (mods) ;
+    out = JSONSetElement ( "{}" ; "id" ; id ; JSONString ) 
+  ] ;
+    idx ≤ cnt ;
+    [
+      raw = GetValue ( mods ; idx ) ; 
+      pos = Position ( raw ; "::" ; 1 ; 1 ) ;
+      key = Case ( pos > 0 ; Middle ( raw ; pos + 2 ; 1000 ) ; raw ) ;   // strip the table prefix for a clean JSON key
+      out = JSONSetElement ( out ; key ; GetField ( raw ) ; JSONString ) ;
+      idx = idx + 1
+    ] ;
+    out
+  )
+)]]></Calculation>
+    <Comment/>
+    <AutoEnter alwaysEvaluate="False"/>
+    <Storage storeCalculationResults="False" indexLanguage="English" global="False" maxRepetition="1"/>
+    <Annotation>
+      <Text/>
+    </Annotation>
+    <DisplayNames enable="False"/>
+  </Field>
+</fmxmlsnippet>
