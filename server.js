@@ -14,7 +14,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { openDb, openDbReadOnly } from "./db.js";
 import { appendBatch, head, verifyRange, entryHash, GENESIS } from "./chain.js";
 import { runScan, getPrefs } from "./scan.js";
-import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, setAIConfig, aiConfig, currentModel, MODELS, listModels } from "./ai.js";
+import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, setAIConfig, aiConfig, currentModel, MODELS, listModels, currentKey } from "./ai.js";
 import { diffRecords } from "./diff.js";
 import { runRules, dryRun, createRule, listRules, updateRule, ruleFirings, ruleMatches, seedDefaultRules } from "./rules.js";
 import * as demoSession from "./demo/demosession.js";
@@ -1036,6 +1036,26 @@ app.get("/api/ai", async (req, res) => {
     body.link = DEMO_LINK;
   }
   res.json(body);
+});
+
+// Is this key any good? Asked before saving, and answerable later as "is my
+// key STILL good?" by testing with the field blank. Nothing is stored: the
+// typed key is used for one call and forgotten. Pythia's contract, verbatim.
+app.post("/api/ai/test", async (req, res) => {
+  const key = String(req.body?.key || "").trim() || currentKey();
+  if (!key) return res.json({ ok: false, error: "No key to test. Paste one above, or save one first." });
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/models?limit=1", {
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (r.status === 401 || r.status === 403) return res.json({ ok: false, error: "Anthropic rejected that key." });
+    if (!r.ok) return res.json({ ok: false, error: `Anthropic answered ${r.status}. The key may be fine; try again shortly.` });
+    const first = ((await r.json()).data || [])[0];
+    res.json({ ok: true, model: first?.display_name || first?.id || "" });
+  } catch (e) {
+    res.json({ ok: false, error: /abort|timeout/i.test(String(e)) ? "Timed out reaching Anthropic." : String(e.message || e) });
+  }
 });
 
 app.post("/api/ai", async (req, res) => {

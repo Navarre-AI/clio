@@ -107,6 +107,8 @@ export async function listModels(force = false) {
 }
 
 export function aiAvailable() { return Boolean(API_KEY()); }
+// The current key, server-side only, for the /api/ai/test path. Never sent to a client.
+export function currentKey() { return API_KEY(); }
 
 // Fast mode exists only on Opus; thinking shapes differ by model generation.
 // If a model rejects the knobs, retry once with a plain body (Pythia's pattern),

@@ -70,7 +70,7 @@
   #sideResize { flex:none; width:5px; margin-left:-3px; cursor:col-resize; z-index:5; }
   #sideResize:hover, #sideResize.drag { background:var(--accent2); opacity:.5; }
   /* Read-only link: nothing that writes is reachable or visible. */
-  body.viewer .writes, body.viewer #addSystemBtn { display:none !important; }
+  body.viewer .writes, body.viewer #addSystemBtn, body.viewer [data-w] { display:none !important; }
   .askbox textarea { width:100%; box-sizing:border-box; resize:none; height:56px; border:0; background:transparent; color:var(--ink); font:inherit; padding:11px 14px 3px; }
   .askbox textarea:focus { outline:none; }
   .askmeta { display:none; flex-wrap:wrap; gap:4px 14px; justify-content:space-between; padding:0 14px 8px; font-size:11.5px; line-height:1.4; color:var(--dim); }
@@ -214,7 +214,7 @@
 <!-- Settings -->
 <div class="overlay" id="settings"><div class="panel">
   <div class="p-head"><span class="ttl">Settings</span><button class="x" id="setClose">✕</button></div>
-  <div class="tabs" id="setTabs"><button data-t="ai" class="on">AI</button><button data-t="alerts">Alerts</button><button data-t="about">About</button></div>
+  <div class="tabs" id="setTabs"><button data-t="ai" class="on">AI</button><button data-t="alerts" class="writes">Alerts</button><button data-t="about">About</button></div>
   <div class="p-list">
     <div id="tab-ai">
       <div class="scard"><div class="scard-h">AI</div>
@@ -223,10 +223,12 @@
           <div class="field" id="thinkWrap" style="margin-bottom:10px"><span>Thinking</span><select class="input" id="aiThinking"><option value="">Auto</option><option value="off">Off (fastest)</option><option value="deep">Deep</option></select></div>
           <div class="field" id="fastWrap" style="margin-bottom:10px"><span>Speed</span><label style="display:flex;align-items:center;gap:8px;font-size:13.5px;padding:9px 0;cursor:pointer"><input type="checkbox" id="aiFast" style="width:16px;height:16px;accent-color:var(--accent)"> Fast mode</label></div>
         </div>
-        <div class="field" style="margin-bottom:2px"><span>Anthropic API key</span><input type="password" id="aiKey" class="input" placeholder="blank = keep current" autocomplete="off" style="max-width:340px"><span id="aiState" class="hint"></span></div>
+        <div class="field" style="margin-bottom:2px"><span>Anthropic API key</span>
+          <div class="setrow" style="margin:0"><input type="password" id="aiKey" class="input" placeholder="blank = keep current" autocomplete="off" style="max-width:300px"><button class="btn ghost sm" id="aiTestBtn">Test</button></div>
+          <span id="aiKeyStatus" class="hint"></span><span id="aiState" class="hint"></span></div>
       </div>
     </div>
-    <div id="tab-alerts" style="display:none">
+    <div id="tab-alerts" class="writes" style="display:none">
       <div class="scard"><div class="scard-h">Slack</div><div class="field"><span>Incoming webhook URL</span><input class="input" id="chSlack" placeholder="https://hooks.slack.com/services/…"></div><div class="hint">Warn and critical findings post here.</div></div>
       <div class="setrow" style="margin-top:12px"><button class="btn sm" id="chSave">Save</button><button class="btn ghost sm" id="chTest">Send test</button><span class="quiet" id="chStatus" style="padding:0"></span></div>
     </div>
@@ -347,7 +349,7 @@ function applyViewer(){
   const b=$("demoBanner"); if(b){ b.style.display="";
     b.innerHTML=`<span class="dot"></span><span><b>Read-only.</b> You can read, search and ask questions. Nothing here can be changed.</span>`; }
   const add=$("addSystemBtn"); if(add) add.style.display="none";
-  const nav=document.querySelector('[data-view="settings"]'); if(nav) nav.style.display="none";
+  const sb=$("settingsBtn"); if(sb) sb.style.display="none";
 }
 function applyDemo(){ if(demoApplied)return; demoApplied=true; DEMO=true;
   const b=$("demoBanner"); b.style.display="";
@@ -733,6 +735,12 @@ async function ackAllW(){
   await post("/api/warnings/ack-all",warnSys?{system_id:warnSys}:{}); loadWarnings(); loadOverview(); }
 
 // ---- settings ----
+// The result speaks for itself; leaving aiState up too gives two hints at once.
+$("aiTestBtn").onclick=async()=>{ const st=$("aiKeyStatus"); $("aiState").textContent=""; st.style.color="var(--muted)"; st.textContent="Testing…";
+  try{ const r=await(await fetch(api("/api/ai/test"),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({key:$("aiKey").value.trim()})})).json();
+    st.style.color=r.ok?"var(--good)":"var(--bad)";
+    st.textContent=r.ok?("Key works"+($("aiKey").value.trim()?" (paste, then Save to keep it)":"")):r.error;
+  }catch(e){ st.style.color="var(--bad)"; st.textContent=String(e.message||e); } };
 $("settingsBtn").onclick=()=>{ $("settings").classList.add("open"); loadAI(); loadChannels(); };
 $("setClose").onclick=()=>$("settings").classList.remove("open");
 $("setTabs").querySelectorAll("button").forEach((b)=>b.onclick=()=>{ $("setTabs").querySelectorAll("button").forEach((x)=>x.classList.toggle("on",x===b)); ["ai","alerts","about"].forEach((t)=>$("tab-"+t).style.display=t===b.dataset.t?"":"none"); });
@@ -745,7 +753,7 @@ async function loadAI(){ const a=await j("/api/ai");
   $("aiState").textContent=a.demo
     ? (a.available?`Demo: ${a.model} on a spend-capped key, ${a.prompts_limit} questions per visitor (${a.prompts_used} used). The key lives only in the environment and cannot be set from here.`
                   :"Demo: no API key is configured right now, so Ask the logs is unavailable. Everything else is live.")
-    : (a.available?(a.fallback?"Built-in list (couldn't reach Anthropic).":"Live model list."):"No key set: add one below or as a Fly secret.");
+    : (a.available?(a.fallback?"Built-in list (couldn't reach Anthropic).":"Live model list."):"No key set: add one above or as a Fly secret.");
   aiGate();
 }
 $("aiModel").onchange=async()=>{ aiGate(); await post("/api/ai",{model:$("aiModel").value}); };
