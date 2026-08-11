@@ -49,11 +49,12 @@ if (flag("local")) {
   const adminToken = token();
   fs.writeFileSync(envPath, [
     `ADMIN_TOKEN=${adminToken}`,
-    "SITE_PASSWORD=",
+    `SITE_PASSWORD=clio_ui_${token().slice(0, 12)}`,  // never blank: an open dashboard is not a default
     "ANTHROPIC_API_KEY=",
     "PORT=8080",
     "",
   ].join("\n"));
+  try { fs.chmodSync(envPath, 0o600); } catch {}  // holds the admin token
   console.log(`Wrote .env with a fresh ADMIN_TOKEN.\n  npm start\nthen mint a key:`);
   console.log(`  curl -s -X POST localhost:8080/v1/admin/keys -H "Authorization: Bearer ${adminToken}" \\`);
   console.log(`    -H "Content-Type: application/json" -d '{"system_id":"my-system","label":"first key"}'`);
@@ -87,7 +88,12 @@ sh(`flyctl volumes create clio_data --app ${appName} --region ${region} --size 1
 const secrets = [`ADMIN_TOKEN=${adminToken}`];
 if (sitePassword) secrets.push(`SITE_PASSWORD=${sitePassword}`);
 if (aiKey) secrets.push(`ANTHROPIC_API_KEY=${aiKey}`);
-sh(`flyctl secrets set ${secrets.join(" ")} --app ${appName} --stage`);
+// Secrets on stdin, not on the command line. An argv is visible to every
+// process on the machine via ps, and lands in shell history; these are the
+// admin token and the dashboard password.
+execSync(`flyctl secrets import --app ${appName} --stage`, {
+  input: secrets.join("\n") + "\n", stdio: ["pipe", "inherit", "inherit"], cwd: __dirname,
+});
 sh(`flyctl deploy --app ${appName}`);
 
 const url = `https://${appName}.fly.dev`;

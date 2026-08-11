@@ -251,6 +251,26 @@ app.use((req, res, next) => {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate"); // FM web viewers cache aggressively
   next();
 });
+// Standard headers, set before anything can answer. Clio serves one HTML file
+// with no external assets, so a strict CSP costs nothing and closes the whole
+// injected-script class: log content is untrusted by design (anyone who can
+// write a record in a logged file can put text in a payload).
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  // A dashboard URL carries its password in ?key=, so it must never leave in a
+  // Referer header, and nothing may be embedded from elsewhere.
+  res.setHeader("Content-Security-Policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'");
+  if (req.secure || req.headers["x-forwarded-proto"] === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
+
 app.use(express.json({ limit: "25mb" })); // a Delete All / big Replace arrives as ONE OnWindowTransaction payload
 
 // ---- demo read-only gate ----------------------------------------------------
@@ -359,7 +379,13 @@ function liveMatches(rows, q) {
   });
 }
 
-if (DEMO_MODE) { app.use(demoSessionMw); app.use(demoReadOnly); }
+if (DEMO_MODE) {
+  // /health is for uptime checks, not visitors. It was minting a demo session
+  // per probe, so a monitor hitting it every minute filled the session map
+  // with sessions nobody was in.
+  app.use((req, res, next) => (req.path === "/health" ? next() : demoSessionMw(req, res, next)));
+  app.use(demoReadOnly);
+}
 
 // Password gate for the UI surface only. Machine routes (/v1, /health) use
 // Bearer auth and must stay reachable by shippers and FileMaker scripts.
