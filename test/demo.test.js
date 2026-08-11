@@ -550,3 +550,34 @@ test("a wrong-path post with no body still answers in JSON, never HTML", async (
     assert.equal(b.error.code, "wrong_endpoint");
   } finally { stop(s); }
 });
+
+// "Did I paste the right thing?" has had no answer until now: the only proof
+// was posting a real entry and waiting to see it, which is exactly the thing
+// you should not have to do to find out whether you pasted correctly.
+test("the connection check confirms a code, and writes nothing", async () => {
+  const s = await boot({}, { withDataset: false });
+  try {
+    const mint = await (await req(s.base, "POST", "/v1/admin/keys",
+      { token: "test-admin-token", body: { system_id: "acme", label: "t" } })).json();
+    const key = mint.data.key;
+
+    const good = await (await fetch(`${s.base}/v1/check/${key}`)).json();
+    assert.equal(good.ok, true);
+    assert.equal(good.data.system_id, "acme", "it names the system the code maps to");
+    assert.ok(good.data.app, "and the app it reached, which is the usual mistake");
+
+    const bad = await fetch(`${s.base}/v1/check/clio_in_nonsense`);
+    assert.equal(bad.status, 401);
+    const b = await bad.json();
+    assert.equal(b.error.code, "unknown_code");
+    assert.match(b.error.message, /Reached/, "a wrong code still says WHERE it got to");
+
+    // The point of a check: it leaves no trace anywhere.
+    const logs = await (await fetch(`${s.base}/v1/logs?system_id=acme&limit=5`,
+      { headers: { Authorization: "Bearer test-admin-token" } })).json();
+    assert.equal(logs.data.entries.length, 0, "a check must not append an entry");
+    const unfiled = await (await fetch(`${s.base}/v1/logs?system_id=unfiled&limit=5`,
+      { headers: { Authorization: "Bearer test-admin-token" } })).json();
+    assert.equal(unfiled.data.entries.length, 0, "and a bad code must not file one either");
+  } finally { stop(s); }
+});

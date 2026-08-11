@@ -118,6 +118,7 @@ Machine surface, `Authorization: Bearer <key>`, envelope `{ok, data|error}`:
 | `POST /v1/admin/keys`, `GET`, `DELETE /:id` | admin | Mint (plaintext shown once) / list / revoke |
 | `POST /v1/admin/systems/:id/archive` | admin | Snapshot a system's whole log and export it; appends a tombstone. Non-destructive |
 | `POST /v1/admin/systems/:id/purge` | admin | Delete one system's records. Needs `{"confirm":"<system_id>"}`. Irreversible |
+| `GET /v1/check/:code` | none | Is this the right URL and code? Names the app and system. Writes nothing |
 | `GET /health`, `GET /v1/info` | none | Liveness and version |
 
 Admin callers pass `?system_id=`; key callers are scoped to their own system.

@@ -441,6 +441,39 @@ function ingest(req, res) {
   res.json(ok(echoData(systemId, entries, result, entries.length > 1 ? "batch" : "event")));
 }
 
+// ---- connection check --------------------------------------------------------
+// "Did I paste the right thing?" answered while the user is still in the
+// terminal, or standing in FileMaker with the Test Connection button, instead
+// of three days later when nothing has appeared.
+//
+// GET on purpose: it must never be mistaken for ingest, and it writes NOTHING.
+// No entry, no reject row, no database registration. A test that leaves a mark
+// would put the shipped Clio.fmp12 on the user's own systems list.
+//
+// It reports the app it reached as well as the system, because the failure it
+// is catching is usually a wrong host or a stale URL, not a bad code.
+app.get("/v1/check/:key", (req, res) => {
+  const key = String(req.params.key || "");
+  const row = key
+    ? db.prepare("SELECT system_id, label FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL").get(sha256Hex(key))
+    : null;
+  const app_host = req.get("host") || "";
+  if (!row) {
+    return res.status(401).json(errBody("unknown_code",
+      `Reached ${app_host}, but that connection code is not valid here. ` +
+      "Mint one from the dashboard, or check you pasted the whole URL.",
+      res.locals.requestId));
+  }
+  const sys = db.prepare("SELECT label FROM systems WHERE system_id = ?").get(row.system_id);
+  res.json(ok({
+    app: app_host,
+    system_id: row.system_id,
+    system: (sys && sys.label) || row.system_id,
+    universal: row.system_id === "universal",
+    message: `Connected to ${app_host} (${(sys && sys.label) || row.system_id})`,
+  }));
+});
+
 app.post("/v1/log", ingestAuth, ingest);
 app.post("/v1/log/:key", ingestAuth, ingest); // key-in-URL: unknown key -> Unfiled, never dropped
 
