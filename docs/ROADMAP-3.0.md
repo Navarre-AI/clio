@@ -47,3 +47,36 @@ and patterns span the whole estate, not one file.
 Every number stays deterministic SQL. Semantic features produce *suggestions,
 similarity, and labels* a human confirms, never invented facts or counts. The
 raw log remains the tamper-evident source of truth underneath all of it.
+
+## The whole story of a record, including everything under it
+
+From a Company record, see the log for that company AND for the records
+hanging off it: its people, its invoices, and the lines under those invoices.
+One view, the full subtree, in a Web Viewer on the company layout.
+
+Why this is the feature that sells Clio to people who are not developers: "who
+changed this customer, and everything to do with them" is a question anyone in
+a business asks. "Verify the hash chain" is not.
+
+The cheap way in, worth trying before anything clever: the per-table payload
+already carries whatever fields changed, and in a normalised FileMaker file
+those include the foreign keys. So an entry on an Invoice Line already contains
+the invoice id, and the invoice's entry already contains the company id. Rolling
+up is then a value search across payloads, not a schema Clio has to be taught:
+"every entry whose payload mentions this UUID, at any depth."
+
+That works for one hop and gets thin at two or three, because the line item
+knows its invoice but not its company. Two ways forward, in order of cost:
+
+1. **Ask the field to carry the ancestry.** The calc adds the parent ids it can
+   reach, so a line's entry names its invoice AND its company. Costs nothing at
+   read time and needs no configuration in Clio, but the FileMaker author has
+   to include them.
+2. **Teach Clio the shape.** A per-system map of table to parent table and key
+   field, so the rollup is a real traversal. More powerful, and it is
+   configuration, which is the thing this product has avoided so far.
+
+Start with the value search, since it needs no new storage and would already
+answer most of the question. Related: the record-scoped read-only view and the
+signed embed URL, which are what put this on a company layout in the first
+place.
