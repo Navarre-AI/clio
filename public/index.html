@@ -411,7 +411,10 @@ async function openSystem(sid) {
   const total = counts ? counts.total : (s.entry_count||0);
   const fileN = (d)=>counts ? (counts.files[(d.system_id||sid)+"|"+d.file_name]||0) : d.entry_count;
   const files=(s.databases||[]).filter((d)=>d.placed);
-  let fileRows = files.length ? files.map((d)=>{const fsid=d.system_id||sid;return DEMO
+  // A read-only link gets the demo's look-don't-touch rendering: same modal,
+  // no inputs. Rendering writable fields and dropping the save is a lie.
+  const RO = DEMO || VIEWER;
+  let fileRows = files.length ? files.map((d)=>{const fsid=d.system_id||sid;return RO
       ? `<div class="dbrow"><span style="flex:1;font-weight:600">${esc(d.name)}</span><span class="dbc">${fmtN(fileN(d))} entries${d.linked?" · linked":""}</span></div>`
       : `<div class="dbrow"><input class="input" style="padding:5px 9px" value="${esc(d.name)}" onchange="renameFile('${esc(fsid)}','${esc(d.file_name)}',this.value)"><span class="dbc">${fmtN(fileN(d))} entries${d.linked?" · linked":""}</span><button class="link" onclick="unlinkFile('${esc(fsid)}','${esc(d.file_name)}')">unlink</button></div>`;}).join("") : '<div class="quiet">No files yet.</div>';
   // The rest of the chain: logins, script errors, exports. Anything the Clio Log
@@ -421,7 +424,7 @@ async function openSystem(sid) {
   if (counts && counts.other) fileRows += `<div class="dbrow"><span style="flex:1;color:var(--muted)">Events not tied to a file <span class="sub">(logins, errors, exports)</span></span><span class="dbc">${fmtN(counts.other)} entries</span></div>`;
   const tail = (logs.entries||[]).map((e)=>{let p={};try{p=JSON.parse(e.payload_json);}catch{} const c=crud(e.action,p),h=humanLine(e); return `<div class="row" style="box-shadow:none"><span class="t">${localHM(e.ts_server)}</span><span class="tag ${c.cls}">${c.tag}</span><span class="main">${h.who?esc(h.who)+" ":""}<span class="did">${esc(redact(h.text))}</span></span></div>`;}).join("") || '<div class="quiet">No entries yet.</div>';
   const TZ=[["","(not set)"],["-8","Pacific (UTC-8)"],["-5","Eastern (UTC-5)"],["0","UTC"],["1","London/CET (UTC+1)"],["3","Athens/Crete (UTC+3)"]];
-  const nameCard = DEMO ? `
+  const nameCard = RO ? `
     <div class="scard"><div class="scard-h">Name &amp; server</div>
       <div class="setrow"><label>Name</label><span>${esc(s.label||sid)}</span></div>
       <div class="setrow"><label>FileMaker server</label><span>${esc(s.fm_server||"–")}</span></div></div>` : `
@@ -436,16 +439,18 @@ async function openSystem(sid) {
       <div class="setrow"><label>Entries</label><span>${fmtN(total)}</span></div>
       <div class="setrow"><label>Status</label><span class="badge b-info" id="verStatus">checking…</span></div></div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Recent activity <span class="sub">(values redacted)</span></div><div class="feed">${tail}</div></div>
-    ${DEMO?"":`<div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div><div class="setrow"><button class="btn ghost sm writes" onclick="archiveSystem('${esc(sid)}')">Archive log</button><button class="link danger writes" onclick="purgeSystem('${esc(sid)}')">Delete all records…</button></div><div id="sysDanger"></div></div>`}`);
+    ${RO?"":`<div class="scard" style="margin-top:12px"><div class="scard-h">Danger zone</div><div class="setrow"><button class="btn ghost sm writes" onclick="archiveSystem('${esc(sid)}')">Archive log</button><button class="link danger writes" onclick="purgeSystem('${esc(sid)}')">Delete all records…</button></div><div id="sysDanger"></div></div>`}`);
   // background chain verify: fills the badge once done, never blocks the modal
   j("/api/verify?system_id="+encodeURIComponent(sid)).then((ver)=>{ const el=$("verStatus"); if(!el)return; el.className="badge "+(ver.valid?"b-ok":"b-bad"); el.textContent=ver.valid?"Verified ✓":("Problem at #"+ver.first_bad_seq); }).catch(()=>{ const el=$("verStatus"); if(el){ el.className="badge b-info"; el.textContent="check unavailable"; } });
 }
 function redact(t) { return String(t).replace(/"[^"]*"/g,'"•••"').replace(/\b\d[\d,.]{2,}\b/g,"•••"); }
 // Auto-save: fires on every field commit (FileMaker style), flashes a quiet "saved".
-async function saveSystem(sid){ await post("/api/systems/"+encodeURIComponent(sid),{label:$("sysLabel").value.trim()||null,fm_server:$("sysServer").value.trim()||null,tz_offset:$("sysTz").value===""?null:Number($("sysTz").value),display:$("sysDisp").classList.contains("on")}); const m=$("sysMsg"); if(m){ m.textContent="saved ✓"; setTimeout(()=>{ if(m.textContent==="saved ✓") m.textContent=""; },1500); } loadOverviewQuiet(); }
+async function saveSystem(sid){ const r=await post("/api/systems/"+encodeURIComponent(sid),{label:$("sysLabel").value.trim()||null,fm_server:$("sysServer").value.trim()||null,tz_offset:$("sysTz").value===""?null:Number($("sysTz").value),display:$("sysDisp").classList.contains("on")}); const m=$("sysMsg");
+  // Believe the server, not the click: a refusal said "saved ✓" here once.
+  if(m){ if(r&&r.ok===false){ m.textContent=r.error?.message||"not saved"; } else { m.textContent="saved ✓"; setTimeout(()=>{ if(m.textContent==="saved ✓") m.textContent=""; },1500); } } loadOverviewQuiet(); }
 async function renameFile(sid,file,name){ await post("/api/databases/rename",{system_id:sid,file_name:file,name:name.trim()||null}); loadOverviewQuiet(); }
 async function unlinkFile(sid,file){ if(!confirm("Unlink this database? It goes back to new/unplaced.")) return; await post("/api/databases/unlink",{system_id:sid,file_name:file}); closeModal(); loadOverview(); }
-$("addSystemBtn").onclick = async()=>{ const name=prompt("Name the new system:"); if(!name)return; const sid=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); const r=await adminReq("POST","/v1/admin/keys",{system_id:sid,label:name}); if(r&&r.data){ urlModal(name, location.origin+"/v1/log/"+r.data.key); loadOverview(); } };
+$("addSystemBtn").onclick = async()=>{ const name=prompt("Name the new system:"); if(!name)return; const sid=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); const r=await adminReq("POST","/v1/admin/keys",{system_id:sid,label:name,system_label:name}); if(r&&r.data){ urlModal(name, location.origin+"/v1/log/"+r.data.key); loadOverview(); } };
 
 // wizard
 function wizard(){ if(!ov.unplaced||!ov.unplaced.length){loadOverview();return;} placeOne(0); }

@@ -1222,7 +1222,11 @@ app.post("/v1/admin/keys", adminAuth, (req, res) => {
   const systemId = String(req.body?.system_id || "").trim();
   if (!systemId) return fail(res, 400, "bad_request", "system_id is required.");
   const label = req.body?.label ? String(req.body.label) : null;
-  upsertSystem(systemId, req.body); // registering rides along with minting
+  // Registering rides along with minting, but the KEY's label must not name
+  // the SYSTEM: the installer minted with label "first key" and every system
+  // it created was christened "first key" on the dashboard. The system's
+  // display name comes only from an explicit system_label.
+  upsertSystem(systemId, { ...req.body, label: req.body?.system_label });
   const key = generateApiKey();
   const id = randomUUID();
   db.prepare("INSERT INTO api_keys (id, system_id, label, key_hash) VALUES (?, ?, ?, ?)")
