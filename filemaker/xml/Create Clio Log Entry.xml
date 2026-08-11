@@ -12,7 +12,7 @@
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
-    <Text>Script version 1.2  –  8/3/2026</Text>
+    <Text>Script version 1.2  –  11 August 2026</Text>
   </Step>
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
@@ -22,17 +22,17 @@
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
-    <Text>Purpose: Writes a log record into hosted Clip app on Fly.io</Text>
+    <Text>Purpose: Creates a Clio log record</Text>
   </Step>
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
-    <Text>Called by: OnWindowTransaction trigger, or any script.</Text>
+    <Text>Called by: OnWindowTransaction   or any script or other trigger</Text>
   </Step>
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
-    <Text>Calls: Fly Function Server-side</Text>
+    <Text>This script calles itself PSoS, then your Clio server with Insert from URL...</Text>
   </Step>
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
@@ -43,10 +43,6 @@
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
   </Step>
-  <Step enable="True" id="86" name="Set Error Capture">
-    <Set state="True"/>
-    <DisableStepCollapsed state="False"/>
-  </Step>
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
@@ -54,7 +50,7 @@
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
-    <Text>Your Clio endpoint (https, key in the path)</Text>
+    <Text>Paste your Clio endpoint   example: https://your-app.fly.dev/v1/log/clio_in_abcXYX...</Text>
   </Step>
   <Step enable="True" id="141" name="Set Variable">
     <DisableStepCollapsed state="False"/>
@@ -73,7 +69,15 @@
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
-    <Text>====   No changes needed below here  =====</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>===========   No changes needed below here  ============</Text>
+  </Step>
+  <Step enable="True" id="86" name="Set Error Capture">
+    <Set state="True"/>
+    <DisableStepCollapsed state="False"/>
   </Step>
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
@@ -105,7 +109,7 @@
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
-    <Text>Enrich ONLY on the client, so the server pass can't overwrite the user's account/table/time with the server session's</Text>
+    <Text>Determine if script is running on hosted file, single-user, or on server</Text>
   </Step>
   <Step enable="True" id="141" name="Set Variable">
     <DisableStepCollapsed state="False"/>
@@ -178,6 +182,11 @@ JSONSetElement ( $json_in ;
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
   </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Call you Clio server to create log entry</Text>
+  </Step>
   <Step enable="True" id="160" name="Insert from URL">
     <NoInteract state="True"/>
     <DontEncodeURL state="False"/>
@@ -198,7 +207,11 @@ JSONSetElement ( $json_in ;
   <Step enable="True" id="89" name="# (comment)">
     <DisableStepCollapsed state="False"/>
     <Restore state="False"/>
-    <Text>Script was called from hosted client - Run Server-side</Text>
+  </Step>
+  <Step enable="True" id="89" name="# (comment)">
+    <DisableStepCollapsed state="False"/>
+    <Restore state="False"/>
+    <Text>Database is hosted. Call this script and create log entry as PSoS</Text>
   </Step>
   <Step enable="True" id="164" name="Perform Script on Server">
     <WaitForCompletion state="False"/>
