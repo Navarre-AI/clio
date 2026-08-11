@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { fileURLToPath } from "url";
+const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 import { openDb } from "../db.js";
 import { appendBatch, head, verifyRange, entryHash, GENESIS } from "../chain.js";
 
@@ -300,4 +302,16 @@ test("an answer cannot grow a dashboard, however many blocks the model asks for"
   const figures = out.filter((a) => a.type === "bar" || a.type === "table").length;
   assert.ok(cells <= 2, `at most 2 KPI cells, got ${cells}`);
   assert.equal(figures, 1, `exactly one figure survives, got ${figures}`);
+});
+
+// The whole UI is one inline script. A single stray character makes the entire
+// block fail to parse, every button dies at once, and nothing in the test suite
+// notices because no test loads the page as a browser would. That shipped: a
+// leftover "}" from an edit took a public install completely dead.
+test("the UI's inline JavaScript actually parses", () => {
+  const html = fs.readFileSync(path.join(ROOT_DIR, "public", "index.html"), "utf8");
+  const js = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join("\n;\n");
+  assert.ok(js.length > 1000, "found the page's script");
+  // new Function throws a SyntaxError on the same input a browser would reject.
+  assert.doesNotThrow(() => new Function(js), "public/index.html has a syntax error");
 });

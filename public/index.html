@@ -483,7 +483,7 @@ async function adminReq(method, path, body){
   const r=await fetch(api(path),{method,headers:{"content-type":"application/json"},body:body!==undefined?JSON.stringify(body):undefined});
   if(r.status===401){ alert("This Clio is read-only."); return null; }
   return r.json();
-}}
+}
 
 // modal + url helpers
 function modal(title, html){ let o=$("adhoc"); if(!o){o=document.createElement("div");o.id="adhoc";o.className="overlay";document.body.appendChild(o);} o.innerHTML=`<div class="panel auto"><div class="p-head"><span class="ttl">${esc(title)}</span><button class="x" onclick="closeModal()">✕</button></div><div class="p-list">${html}</div></div>`; o.classList.add("open"); o.onclick=null; bindCopy(); }
