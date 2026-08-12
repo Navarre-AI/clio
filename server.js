@@ -35,7 +35,7 @@ const PORT = Number(process.env.PORT || 8080);
 // a per-visitor prompt cap and a cheap model.
 const DEMO_MODE = process.env.DEMO_MODE === "1";
 const DEMO_AI_LIMIT = Number(process.env.DEMO_AI_LIMIT || 10);       // prompts per visitor
-const DEMO_AI_HOURLY = Number(process.env.DEMO_AI_HOURLY || 10);     // prompts per hour, ALL visitors
+const DEMO_AI_HOURLY = Number(process.env.DEMO_AI_HOURLY || 15);     // prompts per hour, ALL visitors
 const DEMO_AI_MODEL = process.env.DEMO_AI_MODEL || "claude-sonnet-5"; // Haiku reasons badly over 100k log rows
 const DEMO_AI_MAX_TOKENS = Number(process.env.DEMO_AI_MAX_TOKENS || 1000);
 const DEMO_AI_MAX_HOPS = Number(process.env.DEMO_AI_MAX_HOPS || 4);
