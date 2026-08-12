@@ -931,6 +931,24 @@ for (let s = 0; s < scanTimes.length; s++) {
 cursor = appendUpTo(Infinity, cursor); // the tail after the last scan
 globalThis.Date = RealDate;
 
+// A demo admin who left ten warnings open would not be a credible admin, and a
+// full screen of them reads as noise rather than as signal. Keep the three
+// criticals plus two routine ones, so the list has room to breathe and the eye
+// lands on the fraud. Allow-list, not deny-list: anything new a future arc
+// files gets acknowledged here rather than quietly stacking up.
+const KEEP_OPEN = [
+  "Mass deletion",
+  "Invoice deleted after it was paid",
+  "Payroll data read after hours",
+  "event types went quiet",
+  "Off-hours activity",
+];
+db.prepare(
+  `UPDATE warnings SET status = 'acknowledged'
+   WHERE status = 'open'
+     AND NOT (${KEEP_OPEN.map(() => "title LIKE ?").join(" OR ")})`
+).run(...KEEP_OPEN.map((t) => `%${t}%`));
+
 // shadow tables the server maintains at ingest (same statements it would run)
 db.prepare(
   `INSERT INTO action_vocab (system_id, action, count, last_seen)
