@@ -196,10 +196,20 @@ function buildArtifacts(spec, queryLog) {
     const numCol = b.valueColumn && cols.includes(b.valueColumn) ? b.valueColumn
       : cols.find((c) => q.rows.every((r) => typeof r[c] === "number")) || cols[cols.length - 1];
     if (b.type === "kpi") {
-      // one tile per row (label column optional), or a single tile from row 0
-      const labelCol = b.labelColumn && cols.includes(b.labelColumn) ? b.labelColumn : null;
+      // b.label is ONE string for the whole block, so it can only describe a
+      // single tile. When the query returns several rows, each tile must take
+      // its label from its own row, or every tile reads the same ("total
+      // invoice events" over both 716 and 83). Fall back to the first
+      // non-value column's VALUE, never to a column NAME.
+      const explicitLabelCol = b.labelColumn && cols.includes(b.labelColumn) ? b.labelColumn : null;
+      const rowLabelCol = explicitLabelCol || cols.find((c) => c !== numCol) || null;
+      const multi = q.rows.length > 1;
+      const rowLabel = (r) => {
+        const v = rowLabelCol == null ? "" : String(r[rowLabelCol] ?? "").trim();
+        return v || b.label || String(numCol);
+      };
       const cells = q.rows.slice(0, 6).map((r) => ({
-        label: b.label || (labelCol ? String(r[labelCol]) : cols[0]),
+        label: multi ? rowLabel(r) : (b.label || rowLabel(r)),
         value: Number(r[numCol]),
       }));
       // One tile row, capped. Extra cells are dropped, not spilled into a
