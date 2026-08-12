@@ -336,6 +336,7 @@ document.addEventListener("keydown", (e) => { if (e.key==="Escape") { const o=[.
 // ---- action → friendly, CRUD tag ----
 function crud(action, p) {
   const a=(action||"").toLowerCase(), type=((p&&p.type)||"").toLowerCase();
+  if (/logout|sign.?out|close database/.test(a+" "+type)) return { cls:"login", tag:"logout" };
   if (/login|open database|sign|logout|close database/.test(a+" "+type)) return { cls:"login", tag:"login" };
   if (/admin|key_|privil|account\.|archive|purge|created a system/.test(a)) return { cls:"admin", tag:"admin" };
   if (/export|print|pdf|\.save/.test(a)) return { cls:"export", tag:"export" };
@@ -467,7 +468,7 @@ async function openSystem(sid) {
   // against the total.
   if (counts && counts.other) fileRows += `<div class="dbrow"><span style="flex:1;color:var(--muted)">Events not tied to a file <span class="sub">(logins, errors, exports)</span></span><span class="dbc">${fmtN(counts.other)} entries</span></div>`;
   const tail = (logs.entries||[]).map((e)=>{let p={};try{p=JSON.parse(e.payload_json);}catch{} const c=crud(e.action,p),h=humanLine(e); return `<div class="row" style="box-shadow:none"><span class="t">${localHM(e.ts_server)}</span><span class="tag ${c.cls}">${c.tag}</span><span class="main">${h.who?esc(h.who)+" ":""}<span class="did">${esc(redact(h.text))}</span></span></div>`;}).join("") || '<div class="quiet">No entries yet.</div>';
-  const TZ=[["","(not set)"],["-8","Pacific (UTC-8)"],["-5","Eastern (UTC-5)"],["0","UTC"],["1","London/CET (UTC+1)"],["3","Athens/Crete (UTC+3)"]];
+  const TZ=[["","(not set)"],["-8","Pacific (UTC-8)"],["-7","Pacific, DST (UTC-7)"],["-6","Central, DST (UTC-6)"],["-5","Eastern (UTC-5)"],["-4","Eastern, DST (UTC-4)"],["0","UTC"],["1","London/CET (UTC+1)"],["2","Athens/Crete (UTC+2)"],["3","Athens/Crete, DST (UTC+3)"]];
   const nameCard = RO ? `
     <div class="scard"><div class="scard-h">Name &amp; server</div>
       <div class="setrow"><label>Name</label><span>${esc(s.label||sid)}</span></div>

@@ -788,6 +788,8 @@ app.get("/v1/logs", keyOrAdmin, (req, res) => {
 
 // ---- warnings + scan --------------------------------------------------------
 
+// Severity first, then recency. A fraud alert must never sit below sixteen
+// routine notices just because a quiet-Tuesday warning was filed an hour later.
 function listWarnings(systemId, status) {
   const where = []; const params = [];
   if (systemId) { where.push("system_id = ?"); params.push(systemId); }
@@ -795,7 +797,9 @@ function listWarnings(systemId, status) {
   return db.prepare(
     `SELECT id, system_id, severity, title, detail, evidence_json, scan_id, status, created_at, source, class
      FROM warnings ${where.length ? "WHERE " + where.join(" AND ") : ""}
-     ORDER BY created_at DESC LIMIT 200`
+     ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END,
+              created_at DESC
+     LIMIT 200`
   ).all(...params);
 }
 

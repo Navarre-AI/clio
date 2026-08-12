@@ -58,6 +58,7 @@ export function aggregatesForSystem(db, systemId, now = Date.now()) {
      FROM log_entries WHERE system_id = ? GROUP BY action`
   ).all(dayAgo, baseStart, dayAgo, systemId);
 
+  const silent = [];
   for (const r of rows) {
     const baseMean = r.base / 14;
     const errorShaped = /error|fail|denied|invalid|tamper/i.test(r.action);
@@ -77,9 +78,22 @@ export function aggregatesForSystem(db, systemId, now = Date.now()) {
       out.push({ kind: "error_spike", system_id: systemId, action: r.action,
         last24: r.last24, baseline_daily_mean: round2(baseMean) });
     } else if (baseMean >= 5 && r.last24 === 0) {
-      out.push({ kind: "action_silent", system_id: systemId, action: r.action,
-        last24: 0, baseline_daily_mean: round2(baseMean) });
+      silent.push({ action: r.action, baseline_daily_mean: round2(baseMean) });
     }
+  }
+
+  // One warning per system, not one per action. An event type that simply did
+  // not happen yesterday is not news, and fourteen of those notices buried the
+  // fraud alert sixteen rows down. The detail names the types, so nothing is
+  // lost: it is the same information, told once.
+  if (silent.length) {
+    out.push({
+      kind: "actions_silent", system_id: systemId,
+      count: silent.length,
+      actions: silent.map((x) => x.action),
+      busiest: silent.slice().sort((a, b) => b.baseline_daily_mean - a.baseline_daily_mean)[0].action,
+      last24: 0,
+    });
   }
 
   // Off-hours activity: events outside the business window (local time via
@@ -138,7 +152,7 @@ export function aggregatesForSystem(db, systemId, now = Date.now()) {
 // Threshold fallback: no model, just the aggregates mapped to severities.
 export function warningsFromAggregates(aggregates) {
   return aggregates.map((a) => {
-    const sev = ["error_spike", "system_silent", "action_silent", "off_hours", "big_export", "delete_spike"]
+    const sev = ["error_spike", "system_silent", "action_silent", "actions_silent", "off_hours", "big_export", "delete_spike"]
       .includes(a.kind) ? "warn" : "info";
     return {
       system_id: a.system_id, severity: sev,
@@ -156,6 +170,9 @@ function titleFor(a) {
     volume_spike: `Unusual volume for ${a.action}`,
     delete_spike: `Deletion spike: ${a.action}`,
     action_silent: `${a.action} went quiet`,
+    actions_silent: a.count === 1
+      ? `${a.actions[0]} went quiet`
+      : `${a.count} event types went quiet`,
     system_silent: `System has gone silent`,
     off_hours: `Off-hours activity`,
     big_export: `Large export: ${a.action}`,
@@ -172,6 +189,13 @@ function detailFor(a) {
       return `${a.last24} "${a.action}" events in the last 24 hours vs a daily average of ${a.baseline_daily_mean}.`;
     case "action_silent":
       return `No "${a.action}" events in the last 24 hours vs a daily average of ${a.baseline_daily_mean}.`;
+    case "actions_silent": {
+      const names = a.actions.slice(0, 4).join(", ");
+      const rest = a.actions.length > 4 ? `, and ${a.actions.length - 4} more` : "";
+      return a.count === 1
+        ? `No "${a.actions[0]}" events in the last 24 hours.`
+        : `${a.count} event types logged nothing in the last 24 hours: ${names}${rest}. Quiet can mean a slow day, or it can mean logging broke.`;
+    }
     case "delete_spike":
       return `${a.last24} "${a.action}" deletions in the last 24 hours vs a daily average of ${a.baseline_daily_mean}.`;
     case "system_silent":
