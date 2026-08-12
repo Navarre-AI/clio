@@ -794,6 +794,16 @@ function listWarnings(systemId, status) {
   const where = []; const params = [];
   if (systemId) { where.push("system_id = ?"); params.push(systemId); }
   if (status) { where.push("status = ?"); params.push(status); }
+  // An excluded system drops out of this list, with one deliberate exception:
+  // a critical finding always surfaces. A system nobody is watching is exactly
+  // where a serious problem would sit unnoticed.
+  if (!systemId) {
+    const gone = excludedSystemIds();
+    if (gone.size) {
+      where.push(`(severity = 'critical' OR system_id NOT IN (${[...gone].map(() => "?").join(",")}))`);
+      params.push(...gone);
+    }
+  }
   return db.prepare(
     `SELECT id, system_id, severity, title, detail, evidence_json, scan_id, status, created_at, source, class
      FROM warnings ${where.length ? "WHERE " + where.join(" AND ") : ""}
@@ -1103,6 +1113,20 @@ function upsertSystem(systemId, { label, fm_server, fm_file, notes } = {}) {
   ).run(systemId, label ?? null, fm_server ?? null, fm_file ?? null, notes ?? null);
 }
 
+// Excluding a system is a VIEW setting for this dashboard, never a logging
+// setting: entries keep arriving, the chain keeps growing, nothing is deleted.
+// These two helpers are the single definition of "included", so Systems, Log
+// Entries and Ask can never drift apart on the answer.
+function excludedSystemIds() {
+  return new Set(db.prepare("SELECT system_id FROM systems WHERE display = 0").all().map((r) => r.system_id));
+}
+function includedSystemIds() {
+  const ids = new Set(db.prepare("SELECT DISTINCT system_id FROM log_entries").all().map((r) => r.system_id));
+  for (const r of db.prepare("SELECT system_id FROM systems").all()) ids.add(r.system_id);
+  for (const x of excludedSystemIds()) ids.delete(x);
+  return [...ids];
+}
+
 function systemsIndex() {
   return Object.fromEntries(db.prepare("SELECT * FROM systems").all().map((s) => [s.system_id, s]));
 }
@@ -1281,8 +1305,9 @@ app.get("/api/overview", (req, res) => {
     (dbsByHome[home] ||= []).push(d);
     if (d.system_display && d.system_display !== d.system_id) (linkedChildren[d.system_display] ||= new Set()).add(d.system_id);
   }
+  const isIncluded = (sid) => Boolean(reg[sid]?.display ?? 1);
   const systems = ids
-    .filter((sid) => showHidden || (reg[sid]?.display ?? 1))
+    .filter((sid) => showHidden || isIncluded(sid))
     .map((sid) => {
       const base = head(db, sid);
       let entry_count = base.entry_count || 0, today = todayCounts[sid] || 0, last = base.last_ts_server || null;
@@ -1320,9 +1345,22 @@ app.get("/api/overview", (req, res) => {
     }
   }
   systems.sort((a, b) => (a.label || a.system_id).localeCompare(b.label || b.system_id));
+  // Excluded systems ride along in their own list rather than vanishing. They
+  // are still logging; hiding the card must never hide that fact, and the way
+  // back in has to live somewhere the user can reach.
+  // 'clio' ships hidden by design (migration 006), so it is not a choice anyone
+  // made and must not be offered back as though it were.
+  const hidden = ids.filter((sid) => !isIncluded(sid) && sid !== "clio").map((sid) => {
+    const base = head(db, sid);
+    return {
+      system_id: sid, label: reg[sid]?.label || null,
+      entry_count: base.entry_count || 0, today: todayCounts[sid] || 0,
+      last_ts_server: base.last_ts_server || null, open_warnings: openCounts[sid] || 0,
+    };
+  }).sort((a, b) => (a.label || a.system_id).localeCompare(b.label || b.system_id));
   // Unplaced files (any system) drive the new-database wizard.
   const unplaced = db.prepare("SELECT system_id, file_name, entry_count, last_seen FROM databases WHERE placed = 0 ORDER BY last_seen DESC").all();
-  res.json({ systems, ai: aiOn(), demo: DEMO_MODE, version: VERSION, unplaced,
+  res.json({ systems, hidden, ai: aiOn(), demo: DEMO_MODE, version: VERSION, unplaced,
     viewer: !!req.isViewer,
     ...(DEMO_MODE ? { demo_ai: { limit: DEMO_AI_LIMIT, used: demoAiUsed(req), link: DEMO_LINK } } : {}),
     tagline: "FileMaker logging for the AI Age." });
@@ -1477,7 +1515,13 @@ app.get("/api/logs", (req, res) => {
   // log stays out of the way; pick the clio system to see it.
   const sysList = String(req.query.systems || "").split(",").filter(Boolean);
   if (sysList.length) { where.push(`system_id IN (${sysList.map(() => "?").join(",")})`); params.push(...sysList); }
-  else if (!sid) where.push("system_id != 'clio'");
+  else if (!sid) {
+    where.push("system_id != 'clio'");
+    // Excluded systems stay out of the feed. Asking for one by name still works,
+    // so nothing becomes unreachable; it just stops arriving unbidden.
+    const gone = excludedSystemIds();
+    if (gone.size) { where.push(`system_id NOT IN (${[...gone].map(() => "?").join(",")})`); params.push(...gone); }
+  }
   if (req.query.person) {
     where.push("COALESCE(json_extract(payload_json,'$.account_name'), json_extract(payload_json,'$.data.z_Modifier')) = ?");
     params.push(String(req.query.person));

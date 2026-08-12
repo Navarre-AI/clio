@@ -135,6 +135,16 @@
   .tag.export { background:var(--offbg); color:var(--accent); } .tag.admin { background:#efe3f5; color:#7a3ea0; } html.dark .tag.admin { background:#2e2440; color:#c9a6e6; }
   .tag.other { background:var(--panel2); color:var(--dim); }
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:13px; }
+  /* Not-included systems: deliberately quiet and much smaller than a card, so
+     they read as set aside rather than as peers of the included ones. */
+  #hiddenWrap { margin-top:26px; border-top:1px solid var(--line); padding-top:12px; }
+  .hidhead { font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--dim); margin-bottom:6px; }
+  .hidhead .sub { text-transform:none; letter-spacing:0; font-size:11px; }
+  .hidrow { display:flex; align-items:center; gap:9px; padding:5px 0; font-size:12.5px; color:var(--dim); }
+  .hidrow .hidname { color:var(--muted); cursor:pointer; font-weight:600; }
+  .hidrow .hidname:hover { color:var(--ink); text-decoration:underline; }
+  .hidrow .hidmeta { margin-left:auto; font-size:11.5px; }
+  .scopebar { font-size:12px; color:var(--dim); margin:0 0 8px; }
   .scard { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); }
   .scard-h { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px; }
   .scard-h .sub { font-weight:400; text-transform:none; letter-spacing:0; color:var(--dim); }
@@ -212,6 +222,7 @@
   <div class="view on" id="v-systems"><div class="wrap wide">
     <div id="wizardBanner"></div>
     <div class="cards" id="systems"></div>
+    <div id="hiddenWrap" style="display:none"></div>
     <div style="margin-top:16px"><button class="link" id="addSystemBtn">+ Add a system manually</button></div>
   </div></div>
 
@@ -225,6 +236,7 @@
 
   <div class="view" id="v-log"><div class="wrap wide">
     <div id="rejectBanner"></div>
+    <div class="scopebar" id="logScope" style="display:none"></div>
     <div class="bar">
       <span style="position:relative;flex:none"><span style="position:absolute;left:10px;top:8px;color:var(--dim)">⌕</span><input class="input" id="logSearch" placeholder="Search" style="width:240px;padding-left:30px"></span>
       <div class="ms" id="lgSysMs"><button class="msbtn" onclick="toggleMs('lgSysMs')">All systems</button><div class="mspop" id="lgSysPop"></div></div>
@@ -440,7 +452,41 @@ async function loadOverview() {
       <div class="sys">${esc(s.label||s.system_id)} ${s.open_warnings?`<span class="badge b-warn">${s.open_warnings}</span>`:""}<span class="today ${s.today?"":"zero"}">${s.today} today</span></div>
       <div class="files">${fl}</div><div class="meta">${fmtN(s.entry_count)} entries · last ${s.last_ts_server?localHM(s.last_ts_server):"–"}</div></div>`; }).join("")
     : '<div class="quiet">No systems yet. Add one, paste its URL into the FileMaker script, and it starts logging.</div>';
+  renderHidden();
 }
+// Excluded systems live on, in a quieter row below the divider. They are still
+// logging, so the line says so: hiding a card must never read as switching a
+// system off. One click puts it back, which is the whole bug this fixes.
+// A filtered feed that doesn't say it is filtered is the same lie as a failed
+// save reporting "saved". State the scope wherever entries are omitted.
+function renderScope(){
+  const el=$("logScope"); if(!el) return;
+  const n=(ov.hidden||[]).length;
+  if(!n){ el.style.display="none"; return; }
+  el.style.display="";
+  el.textContent=`${(ov.systems||[]).length} system${(ov.systems||[]).length===1?"":"s"} included · ${n} not included (still logging)`;
+}
+function renderHidden(){
+  renderScope();
+  const el=$("hiddenWrap"); if(!el) return;
+  const h=ov.hidden||[];
+  if(!h.length){ el.innerHTML=""; el.style.display="none"; return; }
+  el.style.display="";
+  el.innerHTML=`<div class="hidhead">Not included <span class="sub">(still logging)</span></div>`+
+    h.map((s)=>`<div class="hidrow">
+      <span class="hidname" onclick="openSystem('${esc(s.system_id)}')">${esc(s.label||s.system_id)}</span>
+      ${s.open_warnings?`<span class="badge b-warn">${s.open_warnings}</span>`:""}
+      <span class="hidmeta">${fmtN(s.entry_count)} entries${s.today?` · ${s.today} today`:""}</span>
+      <button class="link writes" data-w="1" onclick="includeSystem('${esc(s.system_id)}')">Include</button>
+    </div>`).join("");
+}
+async function includeSystem(sid){ await post("/api/systems/"+encodeURIComponent(sid),{display:true}); loadOverview(); }
+// Excluding is a view setting, never a logging setting. Say so where the switch
+// is, so nobody flips it believing they stopped the system writing.
+function includeText(on){ return on
+  ? "Shown in Systems, Log Entries and Ask."
+  : "Not included. Entries still arrive and are kept. They are hidden from Systems, Log Entries and Ask, but a critical warning still shows."; }
+function includeNote(){ const n=$("incNote"); if(n) n.textContent=includeText($("sysDisp").classList.contains("on")); }
 async function loadOverviewQuiet(){ try{ ov=await j("/api/overview"); }catch{} }
 
 async function openSystem(sid) {
@@ -477,7 +523,8 @@ async function openSystem(sid) {
       <div class="field"><span>Name</span><input class="input" id="sysLabel" value="${esc(s.label||"")}" placeholder="${esc(sid)}" onchange="saveSystem('${esc(sid)}')"></div>
       <div class="field"><span>FileMaker server</span><input class="input" id="sysServer" value="${esc(s.fm_server||"")}" onchange="saveSystem('${esc(sid)}')"></div>
       <div class="field"><span>Time zone</span><select class="input" id="sysTz" onchange="saveSystem('${esc(sid)}')">${TZ.map(([v,l])=>`<option value="${v}" ${String(s.tz_offset??"")===v?"selected":""}>${l}</option>`).join("")}</select></div>
-      <div class="setrow"><span class="toggle ${s.display?"on":""}" id="sysDisp" onclick="this.classList.toggle('on');saveSystem('${esc(sid)}')"><span class="knob"></span></span><span style="width:auto">Show in Systems</span></div></div>`;
+      <div class="setrow"><span class="toggle ${s.display?"on":""}" id="sysDisp" onclick="this.classList.toggle('on');saveSystem('${esc(sid)}');includeNote()"><span class="knob"></span></span><span style="width:auto">Include this system</span></div>
+      <div class="hint" id="incNote">${includeText(s.display)}</div></div>`;
   modal(s.label||sid, `${nameCard}
     <div class="scard" style="margin-top:12px"><div class="scard-h">Database files</div>${fileRows}</div>
     <div class="scard" style="margin-top:12px"><div class="scard-h">Log</div>

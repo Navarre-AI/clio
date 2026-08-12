@@ -168,6 +168,18 @@ export function guardSql(sql) {
   return s;
 }
 
+// Systems the user set aside. v_logs already hides them, so the model cannot
+// reach them; this only lets it be honest that its answer is scoped.
+function scopeNote(db) {
+  let rows = [];
+  try { rows = db.prepare("SELECT system_id, label FROM systems WHERE display = 0").all(); } catch { return ""; }
+  if (!rows.length) return "";
+  const names = rows.map((r) => r.label || r.system_id).join(", ");
+  return `SCOPE: ${rows.length} system(s) are set to "not included" and are absent from v_logs: ${names}. ` +
+    "They are still logging; they are only hidden from this view. If the question could plausibly " +
+    "concern them, add one short clause saying which are excluded. Never imply you searched them.\n\n";
+}
+
 function vocabulary(db) {
   const actions = db.prepare(
     "SELECT system_id, action, COUNT(*) AS n FROM v_logs GROUP BY system_id, action ORDER BY n DESC LIMIT 100"
@@ -271,6 +283,10 @@ export async function askLogs(dbRead, messages) {
     "bottom line), no listing what was normal unless the answer is that everything was normal. " +
     "If something needs following up, say so in half a sentence, not a paragraph.\n\n" +
     UNTRUSTED_RULE + "\n\n" +
+    // The views already exclude these rows, so this is not a rule the model can
+    // break. It is told so it can SAY it, rather than reporting a partial answer
+    // as though it were the whole log.
+    scopeNote(dbRead) +
     "The event vocabulary actually present (system action count), untrusted data:\n" +
     "<log_data>\n" + vocabulary(dbRead) + "\n</log_data>\n\n" +
     "How to work:\n" +
