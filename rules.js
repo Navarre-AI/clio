@@ -141,9 +141,21 @@ export function evaluateRule(db, rule, now = Date.now()) {
       hits = burst; // report the burst, not the whole day
     }
     if (hits.length < threshold && Object.keys(bySystem).length > 1) continue;
-    const actors = [...new Set(hits.map((h) => {
-      try { return JSON.parse(h.payload_json).account_name; } catch { return null; }
-    }).filter(Boolean))];
+    // Name the person the data points at. Listing all seven people who touched
+    // the table that hour buries the one who did 380 of the 391. When one actor
+    // dominates, say so; when it is genuinely spread, list them as before.
+    const actorCounts = new Map();
+    for (const h of hits) {
+      let who = null;
+      try { who = JSON.parse(h.payload_json).account_name; } catch { who = null; }
+      if (who) actorCounts.set(who, (actorCounts.get(who) || 0) + 1);
+    }
+    const ranked = [...actorCounts.entries()].sort((a, b) => b[1] - a[1]);
+    const top = ranked[0];
+    const dominant = top && ranked.length > 1 && top[1] / hits.length >= 0.6 ? top : null;
+    const actors = dominant
+      ? [`${dominant[0]}, ${Math.round((dominant[1] / hits.length) * 100)}% of them`]
+      : ranked.map(([who]) => who);
     const example = exampleOf(hits[hits.length - 1]);
     const detail = `${String(rule.description || "").replace(/\.\s*$/, "")}: ${hits.length} matching event${hits.length === 1 ? "" : "s"} ` +
       `in the last ${humanWindow(windowMin)}` + (actors.length ? ` (${actors.join(", ")})` : "") + "." +

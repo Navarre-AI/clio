@@ -86,6 +86,16 @@ const START = D(BASE_START);
 const END = D(BASE_END);
 // Local (company time) date of "now": routine traffic runs right up to it.
 const LAST_DAY = new Date(NOW_MS + TZ * 3600e3).toISOString().slice(0, 10);
+// A weekday near the end of the window, for arcs that must be recent enough to
+// sit inside a rule's lookback but not so recent they land mid-scan.
+const LAST_DAY_MINUS = (n) => {
+  let ms = NOW_MS + TZ * 3600e3 - n * 86400e3;
+  for (;;) {
+    const dow = new Date(ms).getUTCDay();
+    if (dow !== 0 && dow !== 6) return new Date(ms).toISOString().slice(0, 10);
+    ms -= 86400e3;
+  }
+};
 const SCAN_START = shiftStr(BASE_START, SHIFT_DAYS + SCAN_FIRST_OFFSET);
 
 // The outage (arc 3): nothing at all lands in this UTC window (~40 hours).
@@ -698,6 +708,20 @@ ev(lms(D("2026-06-29"), 7, 55, 5), "security", "security.permission_changed", {
   privilege_set_from: "full_access", privilege_set_to: "sales",
 });
 
+// ---- arc 10: an import far larger than a normal day -------------------------
+// Matt's beat: "Clio knows what a normal project looks like. A large one might
+// be an error, or great news." Deliberately NOT about money. A service rep
+// creates 380 Customers in one hour, when the office creates a few dozen in a
+// whole day. Ambiguous on purpose: a duplicated import, or a real new client
+// whose whole contact list just arrived.
+{
+  const d = LAST_DAY_MINUS(2);
+  arcSession("nrivas", d, 10, 5, 11, 30, SYSTEM);
+  for (let i = 0; i < 380; i++) {
+    recordOp(lms(d, 10, R.int(6, 58), R.int(0, 59)), "nrivas", "Customers", "new");
+  }
+}
+
 // ---- arc 9: the storefront's Saturday-night stock purge ---------------------
 // The second system gets its own catchable incident, so the rules a visitor
 // toggles are visibly firing on more than one chain.
@@ -832,6 +856,7 @@ const DEMO_RULES = [
   { name: "Mass deletion", description: "20 or more record deletions within an hour.", severity: "critical", match: { action_like: "%.deleted", count_gte: 20, window_minutes: 60 } },
   { name: "Big export", description: "An export of 1,000 or more records.", severity: "warn", match: { rows_gte: 1000 } },
   { name: "Invoice deleted after it was paid", description: "An invoice was created, marked paid, and then deleted. Money came in and the record that proves it went away, which is what skimming looks like", severity: "critical", match: { action_like: "%.Invoices.deleted" } },
+  { name: "New records created far above a normal day", description: "A burst of new records much larger than this system's normal day. It can be a duplicated import, or it can be a real new client arriving all at once", severity: "warn", match: { action_like: "%.Customers.new", count_gte: 150, window_minutes: 120 } },
   { name: "Payroll data read after hours", description: "Somebody read payroll records outside business hours", severity: "critical", match: { action_like: "hr.payroll.viewed", off_hours: true, count_gte: 5, window_minutes: 1440 } },
 ];
 for (const r of DEMO_RULES) createRule(db, { ...r, effect: "alert" });
@@ -942,6 +967,7 @@ const KEEP_OPEN = [
   "Payroll data read after hours",
   "event types went quiet",
   "Off-hours activity",
+  "New records created far above a normal day",
 ];
 db.prepare(
   `UPDATE warnings SET status = 'acknowledged'
