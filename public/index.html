@@ -69,6 +69,40 @@
      that clips its own placeholder looks broken. It grows from here (askGrow). */
   #sideResize { flex:none; width:5px; margin-left:-3px; cursor:col-resize; z-index:5; }
   #sideResize:hover, #sideResize.drag { background:var(--accent2); opacity:.5; }
+  /* The drawer button is desktop-hidden: on a wide screen the sidebar is
+     always there and a toggle would just be a button that does nothing useful. */
+  #navBtn { display:none; font-size:20px; line-height:1; padding:4px 8px; margin-right:2px; border-radius:8px; }
+  #navBtn:hover { background:var(--panel2); }
+  #scrim { display:none; position:fixed; inset:0; background:#0008; z-index:39; }
+  /* ---- Phone / narrow. The sidebar becomes a slide-over drawer, and every
+     fixed-width thing that assumed a desktop gets told to wrap or scroll. ---- */
+  @media (max-width: 760px) {
+    #navBtn { display:block; }
+    #sideResize { display:none; }              /* nothing to drag on a phone */
+    .side { position:fixed; top:0; bottom:0; left:0; width:82vw; max-width:300px;
+            z-index:40; transform:translateX(-102%); transition:transform .22s ease;
+            box-shadow:var(--shadow); }
+    body.nav-open .side { transform:none; }
+    body.nav-open #scrim { display:block; }
+    .main { width:100%; }
+    .main-head { padding:12px 14px 10px; gap:8px; flex-wrap:wrap; }
+    .main-head .title { font-size:19px; }
+    .main-head .right { margin-left:auto; }
+    .wrap, .wrap.wide { padding:14px 14px 32px; max-width:100%; }
+    .cards { grid-template-columns:1fr; }       /* one card per row, not 300px minimums */
+    .kpis { grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); gap:8px; }
+    .kpi .v { font-size:20px; }
+    .setrow label { width:100%; }               /* stop the 130px label squeezing inputs */
+    .ms .msbtn { min-width:0; width:100%; }
+    .input { max-width:100% !important; }
+    /* Anything genuinely wide scrolls inside itself rather than pushing the page. */
+    .kv { grid-template-columns:1fr; gap:2px 0; }
+    .kv .kk { margin-top:6px; }
+    .overlay .panel { width:100%; max-width:100%; max-height:92vh; border-radius:14px 14px 0 0; }
+    .askbox textarea { height:64px; }
+  }
+  /* Coarse pointers get bigger hit targets regardless of width. */
+  @media (pointer: coarse) { .navitem { padding:13px 12px; } .footbtn { padding:10px 8px; } }
   /* Read-only link: nothing that writes is reachable or visible. */
   body.viewer .writes, body.viewer #addSystemBtn, body.viewer [data-w] { display:none !important; }
   .askbox textarea { width:100%; box-sizing:border-box; resize:none; height:56px; border:0; background:transparent; color:var(--ink); font:inherit; padding:11px 14px 3px; }
@@ -169,10 +203,11 @@
   <div class="side-foot"><div class="footrow"><button class="footbtn" id="settingsBtn"><span>⚙</span> Settings</button><button class="footbtn" id="themeBtn" style="margin-left:auto" title="Theme">◐</button></div><div class="footinfo" id="footInfo"></div></div>
 </aside>
 <div id="sideResize" title="Drag to resize"></div>
+<div id="scrim"></div>
 
 <main class="main">
   <div class="demobar" id="demoBanner" style="display:none"></div>
-  <div class="main-head"><span class="title" id="viewTitle">Systems</span><span class="sub" id="viewSub"></span><div class="right" id="viewActions"></div></div>
+  <div class="main-head"><button id="navBtn" title="Menu" aria-label="Menu" aria-expanded="false">☰</button><span class="title" id="viewTitle">Systems</span><span class="sub" id="viewSub"></span><div class="right" id="viewActions"></div></div>
 
   <div class="view on" id="v-systems"><div class="wrap wide">
     <div id="wizardBanner"></div>
@@ -286,7 +321,16 @@ function go(v) {
   if(v==="rules"){ if($("newRuleBtn2")) $("newRuleBtn2").onclick=openRuleModal; loadRules(); }
   if(v==="log"){ renderLog(); }
 }
-document.querySelectorAll(".navitem").forEach((n) => n.onclick = () => go(n.dataset.v));
+document.querySelectorAll(".navitem").forEach((n) => n.onclick = () => { go(n.dataset.v); closeNav(); });
+// ---- mobile drawer. Picking a destination closes it, the way every phone app
+// behaves; leaving it open over the thing you just asked for is the bug.
+function setNav(open){ document.body.classList.toggle("nav-open", open); const b=$("navBtn"); if(b) b.setAttribute("aria-expanded", open?"true":"false"); }
+function closeNav(){ setNav(false); }
+$("navBtn").onclick = () => setNav(!document.body.classList.contains("nav-open"));
+$("scrim").onclick = closeNav;
+addEventListener("keydown", (e) => { if(e.key==="Escape") closeNav(); });
+// Rotating to landscape past the breakpoint must not strand an open drawer.
+matchMedia("(max-width: 760px)").addEventListener("change", (e) => { if(!e.matches) closeNav(); });
 document.addEventListener("keydown", (e) => { if (e.key==="Escape") { const o=[...document.querySelectorAll(".overlay.open")]; if(o.length) o[o.length-1].classList.remove("open"); document.querySelectorAll(".ms.open").forEach(m=>m.classList.remove("open")); } });
 
 // ---- action → friendly, CRUD tag ----
@@ -787,8 +831,17 @@ const ABOUT = `<b>Clio: FileMaker logging for the AI Age.</b><br><br>Your FileMa
   const side = document.querySelector(".side"), h = document.getElementById("sideResize");
   if (!side || !h) return;
   const MIN = 180, MAX = 460;
-  const saved = Number(localStorage.clio_sidew);
-  if (saved >= MIN && saved <= MAX) side.style.width = saved + "px";
+  // A width saved on a desktop is an inline style, and inline beats the phone
+  // media query. Apply it only where the drawer isn't in charge, and drop it
+  // again on rotate so a landscape phone doesn't inherit a 460px drawer.
+  const narrow = matchMedia("(max-width: 760px)");
+  const applyWidth = () => {
+    const saved = Number(localStorage.clio_sidew);
+    if (!narrow.matches && saved >= MIN && saved <= MAX) side.style.width = saved + "px";
+    else side.style.width = "";
+  };
+  applyWidth();
+  narrow.addEventListener("change", applyWidth);
   let drag = false;
   h.addEventListener("mousedown", (e) => {
     drag = true; h.classList.add("drag");
