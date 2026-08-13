@@ -1348,9 +1348,14 @@ app.get("/api/overview", (req, res) => {
   // Excluded systems ride along in their own list rather than vanishing. They
   // are still logging; hiding the card must never hide that fact, and the way
   // back in has to live somewhere the user can reach.
-  // 'clio' ships hidden by design (migration 006), so it is not a choice anyone
-  // made and must not be offered back as though it were.
-  const hidden = ids.filter((sid) => !isIncluded(sid) && sid !== "clio").map((sid) => {
+  // Only systems a PERSON set aside belong here. Two others are hidden by the
+  // product and must not be offered back: 'clio' ships hidden (migration 006),
+  // and linking a file hides its auto-created system so it stops showing as a
+  // duplicate card. Offering "Include" on either would resurrect a duplicate.
+  const linkedAway = new Set(db.prepare(
+    "SELECT DISTINCT system_id FROM databases WHERE system_display IS NOT NULL AND system_display != system_id"
+  ).all().map((r) => r.system_id));
+  const hidden = ids.filter((sid) => !isIncluded(sid) && sid !== "clio" && !linkedAway.has(sid)).map((sid) => {
     const base = head(db, sid);
     return {
       system_id: sid, label: reg[sid]?.label || null,

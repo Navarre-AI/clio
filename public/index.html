@@ -579,7 +579,12 @@ function placeOne(i){ const u=ov.unplaced; if(i>=u.length){ closeModal(); loadOv
   modal(`New database (${i+1} of ${u.length})`, `
     <div style="font-size:14px;margin-bottom:12px"><b>${esc(d.file_name)}</b> just started logging (${fmtN(d.entry_count)} entries). What is it?</div>
     <div class="field"><span>Name</span><input class="input" id="wizName" value="${esc(existing||d.file_name)}"></div>
-    <div class="scard" style="margin-top:6px;background:var(--panel2)"><div class="scard-h">Make it its own system</div><div class="setrow"><button class="btn sm" onclick="wizPlace(${i},'own')">Create system</button><span class="quiet" style="padding:0">Its own card and history.</span></div></div>
+    ${existing
+      ? // The file already logs to a system that exists, so "own" files it under
+        // that card. Calling that "Create system" read as the wrong action and
+        // made people hunt for a link button that had nothing to link to.
+        `<div class="scard" style="margin-top:6px;background:var(--panel2)"><div class="scard-h">Add it to ${esc(existing)}</div><div class="setrow"><button class="btn sm" onclick="wizPlace(${i},'own')">Add to ${esc(existing)}</button><span class="quiet" style="padding:0">This file already logs there.</span></div></div>`
+      : `<div class="scard" style="margin-top:6px;background:var(--panel2)"><div class="scard-h">Make it its own system</div><div class="setrow"><button class="btn sm" onclick="wizPlace(${i},'own')">Create system</button><span class="quiet" style="padding:0">Its own card and history.</span></div></div>`}
     ${others.length?`<div class="scard" style="margin-top:10px;background:var(--panel2)"><div class="scard-h">Or show it under an existing system</div><div class="setrow"><select class="input" id="wizTarget" style="width:auto">${others.map((s)=>`<option value="${esc(s.system_id)}">${esc(s.label||s.system_id)}</option>`).join("")}</select><button class="btn ghost sm" onclick="wizPlace(${i},'link')">Link</button></div><div class="hint">Groups this file under that system. Their logs stay separate chains.</div></div>`:""}
     <div class="setrow" style="margin-top:10px"><button class="link" onclick="placeOne(${i+1})">skip for now</button></div><div id="wizResult"></div>`);
 }
