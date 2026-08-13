@@ -145,6 +145,9 @@
   .hidrow .hidname:hover { color:var(--ink); text-decoration:underline; }
   .hidrow .hidmeta { margin-left:auto; font-size:11.5px; }
   .scopebar { font-size:12px; color:var(--dim); margin:0 0 8px; }
+  .convobar { display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .convobar .input.sm { padding:5px 9px; font-size:12.5px; max-width:280px; }
+  .convobar .link { font-size:12px; }
   .scard { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); }
   .scard-h { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px; }
   .scard-h .sub { font-weight:400; text-transform:none; letter-spacing:0; color:var(--dim); }
@@ -228,6 +231,13 @@
 
   <div class="view" id="v-ask">
     <div class="wrap" style="flex:1">
+      <div class="convobar writes" id="convoBar">
+        <button class="btn ghost sm" id="convoNew" data-w="1">+ New</button>
+        <select class="input sm" id="convoPick" title="Conversations"></select>
+        <button class="link" id="convoRename" data-w="1">Rename</button>
+        <button class="link danger" id="convoDelete" data-w="1">Delete</button>
+        <button class="link" id="convoExport">Export</button>
+      </div>
       <div class="pulsebar"><svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.2-6.5L12 19l2.6-9.5L16.4 13H22" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div><div class="ptext" id="pulseText">Reading the room…</div><div class="pmeta" id="pulseMeta"></div></div></div>
       <div id="thread"></div>
     </div>
@@ -332,6 +342,7 @@ function go(v) {
   $("viewActions").innerHTML = (v==="rules") ? '<button class="btn sm" id="newRuleBtn2">+ New rule</button>' : "";
   if(v==="rules"){ if($("newRuleBtn2")) $("newRuleBtn2").onclick=openRuleModal; loadRules(); }
   if(v==="log"){ renderLog(); }
+  if(v==="ask"){ loadConvos(); }
 }
 document.querySelectorAll(".navitem").forEach((n) => n.onclick = () => { go(n.dataset.v); closeNav(); });
 // ---- mobile drawer. Picking a destination closes it, the way every phone app
@@ -368,7 +379,11 @@ function metaValue(v){ const s=String(v??"").trim();
 function clampVal(v){ const s=String(v??"").trim(); if(!s)return "(empty)"; return s.length>70 ? s.slice(0,42)+" … "+s.slice(-24) : s; }
 function displayName(d) { if(!d||typeof d!=="object")return "";
   for(const k of ["Company Name","Name","Title","Task Name","Note","field_name"]) if(d[k]&&!metaValue(d[k])) return String(d[k]).slice(0,60);
-  for(const [k,v] of Object.entries(d)){ if(/id$|^id|^z_/i.test(k)||isHousekeepingF(k))continue; if(typeof v==="string"&&v&&v.length<50&&!metaValue(v))return v; }
+  for(const [k,v] of Object.entries(d)){ if(/id$|^id|^z_/i.test(k)||isHousekeepingF(k))continue;
+    // A serialized blob is never a human name. Without this a nested JSON value
+    // reads out as the record's title, which is how a raw payload reached the feed.
+    if(typeof v==="string"&&/^\s*[{[]/.test(v))continue;
+    if(typeof v==="string"&&v&&v.length<50&&!metaValue(v))return v; }
   return ""; }
 const CLIO_ACTIONS = { "clio.scan.run":"watchdog scan ran", "clio.admin.key_minted":"API key minted", "clio.admin.system_created":"system created", "clio.admin.system_registered":"system registered", "clio.admin.archive_created":"log archived", "clio.verify.failed":"chain verification FAILED", "clio.admin.system_confirmed":"system confirmed", "clio.admin.archive":"log archived", "clio.admin.purge":"records purged", "clio.admin.key_revoked":"API key revoked" };
 function friendlyAction(a) { if(/\s/.test(a))return a;
@@ -378,13 +393,23 @@ function friendlyAction(a) { if(/\s/.test(a))return a;
 // "an Organization", "a Contact". Table names are the author's, so go by the
 // leading letter rather than a word list.
 const art=(w)=>/^[aeiou]/i.test(String(w)) ? "an" : "a";
+// The OnWindowTransaction context field is stored EXACTLY as FileMaker sent it,
+// which is the calculation's own output. When that calc builds JSON the value
+// arrives as a JSON string, not an object, so anything reading p.data.something
+// silently got undefined and the raw string leaked into the line instead of a
+// name. Accept both shapes.
+function dataOf(p){ const d=p&&p.data;
+  if(d&&typeof d==="object") return d;
+  if(typeof d==="string"&&d.trim().startsWith("{")){ try{ const o=JSON.parse(d); return o&&typeof o==="object"?o:{}; }catch{ return {}; } }
+  return {}; }
 function humanLine(e) {
   let p={}; try{p=JSON.parse(e.payload_json);}catch{return{text:friendlyAction(e.action),who:""};}
-  const who = p.account_name || (p.data&&p.data.z_Modifier) || "";
+  const d=dataOf(p);
+  const who = p.account_name || d.z_Modifier || d.account_name || d.account || d.modified_by || "";
   if (typeof p.message==="string"&&p.message) return { text:p.message, who };
   if (p.bulk) return { text:`${fmtN(p.count)} records ${p.op} in ${p.table}`, who };
   const parts=e.action.split("."), op=parts[parts.length-1];
-  if (parts.length>=3 && p.table) { const name=displayName(p.data), label=name?`${p.table} "${name}"`:`${p.table} #${p.record_id}`;
+  if (parts.length>=3 && p.table) { const name=displayName(d), label=name?`${p.table} "${name}"`:`${p.table} #${p.record_id}`;
     let text; if(p.changed){const fs=Object.keys(p.changed).filter((f)=>!isHousekeepingF(f)); text=fs.length?`changed ${fs.join(", ")} on ${label}`:`touched ${label}`;} else text=`${VERB[op]||op} ${label}`;
     return { text, who }; }
   return { text:friendlyAction(e.action), who };
@@ -592,7 +617,34 @@ function urlModal(title, url){ modal(title, `<div class="hint">Put this URL in t
 function bindCopy(){ document.querySelectorAll("[data-copy]").forEach((b)=>{ if(b._c)return; b._c=1; b.onclick=()=>copyText(b.dataset.copy,b); }); }
 
 // ---- Ask ----
-const askMessages=[];
+let askMessages=[];
+// ---- conversations. Instance-scoped, as in Pythia. A read-only link and the
+// demo get no list at all (ephemeral:true), so the bar hides rather than
+// offering buttons that would be refused.
+let convoId=null, convoList=[], convoEphemeral=false;
+async function loadConvos(){
+  const bar=$("convoBar"); if(!bar) return;
+  let d={}; try{ d=await j("/api/conversations"); }catch{ d={}; }
+  convoEphemeral=!!d.ephemeral; convoList=d.conversations||[];
+  if(convoEphemeral){ bar.style.display="none"; return; }
+  bar.style.display="";
+  const pick=$("convoPick");
+  pick.innerHTML=`<option value="">New conversation</option>`+
+    convoList.map((c)=>`<option value="${esc(c.id)}" ${c.id===convoId?"selected":""}>${esc(c.title)}</option>`).join("");
+}
+async function openConvo(id){
+  if(!id){ convoId=null; askMessages=[]; renderThread(); return; }
+  const c=await j("/api/conversations/"+encodeURIComponent(id));
+  if(c&&c.id){ convoId=c.id; askMessages=(c.messages||[]).map((m)=>({role:m.role,content:m.content,artifacts:m.artifacts||[]})); renderThread(); }
+}
+// The conversation is created on the FIRST question, not on page load, so
+// browsing Ask without asking never litters the list with empty chats.
+async function ensureConvo(first){
+  if(convoEphemeral||convoId) return convoId;
+  const c=await post("/api/conversations",{title:first});
+  if(c&&c.id){ convoId=c.id; await loadConvos(); }
+  return convoId;
+}
 function renderMd(t){ return esc(t).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`(.+?)`/g,"<code>$1</code>"); }
 function artifactHtml(a){
   if(a.type==="kpi") return `<div class="kpis">${a.cells.map((c)=>`<div class="kpi"><div class="k">${esc(c.label)}</div><div class="v" title="${fmtN(c.value)}">${fmtC(c.value)}</div></div>`).join("")}</div>`;
@@ -601,10 +653,23 @@ function artifactHtml(a){
   return "";
 }
 function renderThread(){ $("thread").innerHTML=askMessages.map((m)=>m.role==="user"?`<div class="msg user">${esc(m.content)}</div>`:`<div class="msg bot">${renderMd(m.content)}${(m.artifacts||[]).map(artifactHtml).join("")}</div>`).join(""); $("thread").lastElementChild?.scrollIntoView({block:"end"}); }
-async function askSend(){ const q=$("askInput").value.trim(); if(!q)return; $("askInput").value=""; askGrow(); askMessages.push({role:"user",content:q}); renderThread(); $("thread").insertAdjacentHTML("beforeend",`<div class="msg meta" id="thinking">reading the logs…</div>`); const r=await post("/api/ask",{messages:askMessages.map((m)=>({role:m.role,content:m.content}))}); $("thinking")?.remove(); askMessages.push({role:"assistant",content:r.error?("Something went wrong: "+r.error):(r.reply||"…"),artifacts:r.artifacts||[]}); renderThread();
+async function askSend(){ const q=$("askInput").value.trim(); if(!q)return; $("askInput").value=""; askGrow(); askMessages.push({role:"user",content:q}); renderThread(); $("thread").insertAdjacentHTML("beforeend",`<div class="msg meta" id="thinking">reading the logs…</div>`); const cid=await ensureConvo(q); const r=await post("/api/ask",{messages:askMessages.map((m)=>({role:m.role,content:m.content})),conversationId:cid}); $("thinking")?.remove(); askMessages.push({role:"assistant",content:r.error?("Something went wrong: "+r.error):(r.reply||"…"),artifacts:r.artifacts||[]}); renderThread();
   if(DEMO&&r.prompts_limit){ DEMO_AI={limit:r.prompts_limit,used:r.prompts_used,link:DEMO_AI?.link,
     busyUntil:r.demo_busy?Date.now()+(r.wait_min||1)*60000:0}; renderQuota(); } }
 $("askBtn").onclick=askSend; $("askInput").onkeydown=(e)=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askSend();}};
+$("convoPick").onchange=()=>openConvo($("convoPick").value);
+$("convoNew").onclick=()=>{ convoId=null; askMessages=[]; renderThread(); $("convoPick").value=""; $("askInput").focus(); };
+$("convoRename").onclick=async()=>{ if(!convoId)return; const cur=(convoList.find((c)=>c.id===convoId)||{}).title||"";
+  const t=prompt("Rename conversation:",cur); if(!t||!t.trim())return;
+  await j("/api/conversations/"+encodeURIComponent(convoId),{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({title:t.trim()})}); loadConvos(); };
+$("convoDelete").onclick=async()=>{ if(!convoId)return; if(!confirm("Delete this conversation? The log itself is untouched."))return;
+  await j("/api/conversations/"+encodeURIComponent(convoId),{method:"DELETE"}); convoId=null; askMessages=[]; renderThread(); loadConvos(); };
+// Export works for a viewer too: it only writes to the visitor's own machine.
+$("convoExport").onclick=()=>{ if(!askMessages.length)return;
+  const title=(convoList.find((c)=>c.id===convoId)||{}).title||"Conversation";
+  const lines=["# "+title,""]; for(const m of askMessages) lines.push((m.role==="user"?"**You**":"**Clio**")+": "+(m.content||""),"");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/markdown"}));
+  a.download=title.replace(/[^a-z0-9]+/gi,"-").slice(0,40)+".md"; document.body.appendChild(a); a.click(); a.remove(); };
 // The box grows with the question instead of clipping it, at any width. Long
 // questions push the footnote row down; they never run underneath it.
 function askGrow(){ const t=$("askInput"); if(!t)return; t.style.height="auto"; t.style.height=Math.max(56,Math.min(t.scrollHeight,170))+"px"; }

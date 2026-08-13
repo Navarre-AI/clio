@@ -8,8 +8,18 @@ const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 import { openDb } from "../db.js";
 import { appendBatch, head, verifyRange, entryHash, GENESIS } from "../chain.js";
 
+// Every tempDb() dir is registered here and removed when the process exits.
+// Without this the suite leaves 14 directories behind on every run.
+const tempDirs = [];
+process.on("exit", () => {
+  for (const d of tempDirs) {
+    try { fs.rmSync(d, { recursive: true, force: true }); } catch {}
+  }
+});
+
 function tempDb() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clio-test-"));
+  tempDirs.push(dir);
   return openDb(path.join(dir, "clio.db"));
 }
 
@@ -314,4 +324,49 @@ test("the UI's inline JavaScript actually parses", () => {
   assert.ok(js.length > 1000, "found the page's script");
   // new Function throws a SyntaxError on the same input a browser would reject.
   assert.doesNotThrow(() => new Function(js), "public/index.html has a syntax error");
+});
+
+// A real OnWindowTransaction entry keeps the context field EXACTLY as FileMaker
+// sent it, so when the per-table calculation builds JSON the payload's `data` is
+// a JSON *string*. Every reader that treated it as an object silently got
+// undefined: the feed lost the person's name and printed the raw JSON as the
+// record's title, and the AI reported fields as "always null". Both surfaces are
+// exercised here against the shape a hosted FileMaker file actually produces.
+test("the feed reads a person and a name out of a JSON-string payload", () => {
+  const html = fs.readFileSync(path.join(ROOT_DIR, "public", "index.html"), "utf8");
+  const js = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join("\n;\n");
+  // Run the page's script with just enough browser stubbed to reach its pure
+  // helpers. Every element lookup returns the same permissive stub, so the
+  // top-level wiring runs harmlessly instead of throwing on a null.
+  const el = new Proxy(function () {}, {
+    get: (t, k) => (k === "classList" ? { toggle() {}, add() {}, remove() {}, contains: () => false }
+      : k === "style" ? {} : k === "dataset" ? {} : k === "value" ? "" : k === "textContent" ? "" : el),
+    set: () => true, apply: () => el,
+  });
+  const doc = { getElementById: () => el, querySelector: () => el, querySelectorAll: () => [],
+    createElement: () => el, addEventListener() {}, body: el, documentElement: el };
+  const mm = () => ({ matches: false, addEventListener() {}, addListener() {} });
+  const ctx = new Function(
+    "document", "location", "localStorage", "matchMedia", "addEventListener", "fetch", "EventSource",
+    `${js}\n;return { dataOf, displayName, humanLine };`
+  )(doc, { search: "", href: "http://x/", origin: "http://x" }, {}, mm, () => {}, () => new Promise(() => {}), function () { return el; });
+
+  const owt = {
+    payload_json: JSON.stringify({
+      file: "Timber", table: "Harvest", record_id: 4630,
+      data: JSON.stringify({ z_Modifier: "Pamela", "Name": "2026 VR Harvest", loads: { unpaid_mbf: 764.87 } }),
+    }),
+    action: "main.Harvest.modify",
+  };
+  const line = ctx.humanLine(owt);
+  assert.equal(line.who, "Pamela", "the person is inside data, not at the top level");
+  assert.match(line.text, /2026 VR Harvest/, "the record's name, not its record id");
+  assert.ok(!/\{|unpaid_mbf/.test(line.text), `raw JSON leaked into the feed: ${line.text}`);
+
+  // An object-valued data (chassis shape) must keep working unchanged.
+  const chassis = { payload_json: JSON.stringify({ table: "Harvest", record_id: 1, account_name: "Matt", data: { Name: "Ridge" } }), action: "main.Harvest.new" };
+  assert.equal(ctx.humanLine(chassis).who, "Matt");
+
+  // A blob must never be mistaken for a human-readable title.
+  assert.equal(ctx.displayName({ blob: '{"a":1}' }), "", "serialized values are not names");
 });

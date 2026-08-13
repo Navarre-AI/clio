@@ -1883,9 +1883,73 @@ const lastUserText = (messages) => {
   return "";
 };
 
+// ---- Ask conversations ------------------------------------------------------
+// Instance-scoped, as in Pythia: one shared history behind the site password.
+// Read-only viewers and the demo never persist — saving is a write, and a demo
+// visitor must not read the previous visitor's questions.
+const canKeepChat = (req) => !DEMO_MODE && !req.isViewer && !hasViewAuth(req);
+const convoTitle = (s) => String(s || "").replace(/\s+/g, " ").trim().slice(0, 60) || "New chat";
+
+function readConvo(id) {
+  const r = db.prepare("SELECT * FROM conversations WHERE id = ?").get(id);
+  if (!r) return null;
+  let messages = []; try { messages = JSON.parse(r.messages_json) || []; } catch {}
+  return { id: r.id, title: r.title, created_at: r.created_at, updated_at: r.updated_at, messages };
+}
+
+app.get("/api/conversations", (req, res) => {
+  if (!canKeepChat(req)) return res.json({ conversations: [], ephemeral: true });
+  res.json({ conversations: db.prepare(
+    "SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT 200").all() });
+});
+app.get("/api/conversations/:id", (req, res) => {
+  const c = readConvo(req.params.id);
+  if (!c) return fail(res, 404, "not_found", "No such conversation.");
+  res.json(c);
+});
+app.post("/api/conversations", (req, res) => {
+  if (!canKeepChat(req)) return fail(res, 403, "read_only", "This link cannot save conversations.");
+  const now = new Date().toISOString();
+  const id = randomUUID();
+  db.prepare("INSERT INTO conversations (id, title, created_at, updated_at, messages_json) VALUES (?,?,?,?,'[]')")
+    .run(id, convoTitle(req.body?.title), now, now);
+  res.status(201).json(readConvo(id));
+});
+app.patch("/api/conversations/:id", (req, res) => {
+  if (!canKeepChat(req)) return fail(res, 403, "read_only", "This link cannot rename conversations.");
+  if (!readConvo(req.params.id)) return fail(res, 404, "not_found", "No such conversation.");
+  db.prepare("UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?")
+    .run(convoTitle(req.body?.title), new Date().toISOString(), req.params.id);
+  res.json(readConvo(req.params.id));
+});
+app.delete("/api/conversations/:id", (req, res) => {
+  if (!canKeepChat(req)) return fail(res, 403, "read_only", "This link cannot delete conversations.");
+  db.prepare("DELETE FROM conversations WHERE id = ?").run(req.params.id);
+  res.json({ ok: true, deleted: req.params.id });
+});
+
+// Persisting must never be able to lose an answer the user already has: it runs
+// after the reply is sent, and a failure here is logged, not surfaced.
+function saveTurn(req, conversationId, messages, out) {
+  if (!canKeepChat(req) || !conversationId) return;
+  try {
+    const c = readConvo(conversationId);
+    if (!c) return;
+    const asked = lastUserText(messages);
+    const next = [...c.messages, { role: "user", content: asked },
+      { role: "assistant", content: out?.reply || "", artifacts: out?.artifacts || [] }];
+    const title = c.title === "New chat" && asked ? convoTitle(asked) : c.title;
+    db.prepare("UPDATE conversations SET messages_json = ?, title = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(next), title, new Date().toISOString(), conversationId);
+  } catch (e) {
+    console.log(JSON.stringify({ level: "warn", msg: "conversation not saved", error: String(e.message || e) }));
+  }
+}
+
 app.post("/api/ask", async (req, res) => {
   try {
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const conversationId = req.body?.conversationId ? String(req.body.conversationId) : null;
     if (!aiOn()) {
       if (DEMO_MODE && messages.length) {
         demoState.record({ session_id: req.demoSid || "", ip_hash: demoState.ipHash(req.ip),
@@ -1921,6 +1985,7 @@ app.post("/api/ask", async (req, res) => {
       const out = await askLogs(readHandle(), messages);
       finishAsk(quota, { outcome: "answered", ms: Date.now() - t0 });
       res.json({ ...out, ...counters });
+      saveTurn(req, conversationId, messages, out); // after the reply, never before
     } catch (e) {
       finishAsk(quota, { outcome: "error", ms: Date.now() - t0, error: e.message || e });
       res.status(200).json({ reply: "", error: String(e.message || e), ...counters });
