@@ -476,7 +476,11 @@ async function loadOverview() {
     return `<div class="scard syscard" onclick="openSystem('${esc(s.system_id)}')">
       <div class="sys">${esc(s.label||s.system_id)} ${s.open_warnings?`<span class="badge b-warn">${s.open_warnings}</span>`:""}<span class="today ${s.today?"":"zero"}">${s.today} today</span></div>
       <div class="files">${fl}</div><div class="meta">${fmtN(s.entry_count)} entries · last ${s.last_ts_server?localHM(s.last_ts_server):"–"}</div></div>`; }).join("")
-    : '<div class="quiet">No systems yet. Add one, paste its URL into the FileMaker script, and it starts logging.</div>';
+    // A fresh install is not broken, it is waiting, and it should say which.
+    // The instructions are owner-only: a read-only visitor cannot add a system
+    // or paste anything into FileMaker, so telling them to is noise.
+    : `<div class="quiet">Awaiting the first log entry.${VIEWER ? "" :
+        " Add a system, put its URL in the FileMaker script, and entries appear here as they are committed."}</div>`;
   renderHidden();
 }
 // Excluded systems live on, in a quieter row below the divider. They are still
@@ -578,7 +582,11 @@ function placeOne(i){ const u=ov.unplaced; if(i>=u.length){ closeModal(); loadOv
   const existing=(ov.systems.find((s)=>s.system_id===d.system_id)||{}).label; // already renamed? show that
   modal(`New database (${i+1} of ${u.length})`, `
     <div style="font-size:14px;margin-bottom:12px"><b>${esc(d.file_name)}</b> just started logging (${fmtN(d.entry_count)} entries). What is it?</div>
-    <div class="field"><span>Name</span><input class="input" id="wizName" value="${esc(existing||d.file_name)}"></div>
+    <div class="field"><span>Name</span><input class="input" id="wizName" ${existing
+      // An existing name is a real value being edited, so it is filled in. A
+      // suggestion is ghost text: nobody should have to delete our guess first.
+      ? `value="${esc(existing)}"`
+      : `placeholder="${esc(d.file_name)}"`}></div>
     ${existing
       ? // The file already logs to a system that exists, so "own" files it under
         // that card. Calling that "Create system" read as the wrong action and
@@ -618,7 +626,10 @@ async function adminReq(method, path, body){
 function modal(title, html){ let o=$("adhoc"); if(!o){o=document.createElement("div");o.id="adhoc";o.className="overlay";document.body.appendChild(o);} o.innerHTML=`<div class="panel auto"><div class="p-head"><span class="ttl">${esc(title)}</span><button class="x" onclick="closeModal()">✕</button></div><div class="p-list">${html}</div></div>`; o.classList.add("open"); o.onclick=null; bindCopy(); }
 function closeModal(){ $("adhoc")?.classList.remove("open"); }
 function urlBox(url){ return `<div class="urlbox"><span class="u">${esc(url)}</span><button class="copybtn" data-copy="${esc(url)}" title="Copy">⧉</button></div>`; }
-function urlModal(title, url){ modal(title, `<div class="hint">Put this URL in the FileMaker script (shown once):</div>${urlBox(url)}`); }
+// "Connection code" everywhere for the thing that goes in FileMaker, never
+// "key": the dashboard's site password was also called a key, and the two got
+// swapped in a live script.
+function urlModal(title, url){ modal(title, `<div class="hint">Put this URL in the FileMaker script. It carries this system's connection code and is shown once:</div>${urlBox(url)}`); }
 function bindCopy(){ document.querySelectorAll("[data-copy]").forEach((b)=>{ if(b._c)return; b._c=1; b.onclick=()=>copyText(b.dataset.copy,b); }); }
 
 // ---- Ask ----
@@ -681,7 +692,7 @@ function askGrow(){ const t=$("askInput"); if(!t)return; t.style.height="auto"; 
 $("askInput").addEventListener("input",askGrow);
 addEventListener("resize",askGrow);
 async function pollPulse(){ try{ const p=await j("/api/pulse"); if(p.summary){ $("pulseText").textContent=p.summary; $("pulseMeta").textContent=`${p.stats.events_last_24h} events / 24h · ${p.stats.open_warnings} open`; } }catch{} }
-async function pollRejects(){ try{ const {rejects}=await j("/api/rejects"); if(!rejects||!rejects.length){ $("rejectBanner").innerHTML=""; return; } const recent=rejects.slice(0,4).map((r)=>`<div style="font-size:12px">${localTime(r.ts)} · <b>${esc(r.code)}</b> · ${esc(r.message||"")}</div>`).join(""); $("rejectBanner").innerHTML=`<div class="banner bad"><div style="display:flex;align-items:center;width:100%;gap:10px"><b>${rejects.length} rejected post${rejects.length===1?"":"s"}</b>, refused (usually a wrong API key or URL)<button class="btn ghost sm" style="margin-left:auto" onclick="ackRejects()">Acknowledge</button></div>${recent}</div>`; }catch{} }
+async function pollRejects(){ try{ const {rejects}=await j("/api/rejects"); if(!rejects||!rejects.length){ $("rejectBanner").innerHTML=""; return; } const recent=rejects.slice(0,4).map((r)=>`<div style="font-size:12px">${localTime(r.ts)} · <b>${esc(r.code)}</b> · ${esc(r.message||"")}</div>`).join(""); $("rejectBanner").innerHTML=`<div class="banner bad"><div style="display:flex;align-items:center;width:100%;gap:10px"><b>${rejects.length} rejected post${rejects.length===1?"":"s"}</b>, refused (usually a wrong connection code or URL)<button class="btn ghost sm" style="margin-left:auto" onclick="ackRejects()">Acknowledge</button></div>${recent}</div>`; }catch{} }
 async function ackRejects(){ $("rejectBanner").innerHTML=""; await post("/api/rejects/ack",{}); pollRejects(); }
 
 // ---- Log Entries: one table. A live tail at rest; an investigation on touch. ----

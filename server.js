@@ -464,7 +464,10 @@ if (SITE_PASSWORD) {
       if (decoded.slice(decoded.indexOf(":") + 1) === SITE_PASSWORD) return next();
     }
     res.set("WWW-Authenticate", 'Basic realm="Clio"');
-    return res.status(401).send("Authentication required. Load with ?key=<password> in a web viewer.");
+    // Name the secret, not the parameter. Two different secrets were both called
+    // "the key" and the wrong one ended up pasted into a live script. The query
+    // parameter stays `key` because existing dashboard links carry it.
+    return res.status(401).send("Authentication required. Add your site password to the address: ?key=<site password>");
   });
 }
 app.use(viewerReadOnly);
