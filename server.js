@@ -1737,7 +1737,9 @@ async function buildPulse(total) {
       (trouble.length ? `. Worth a look: ${stats.worth_a_look.join(", ")}` : ". Nothing looks like trouble") +
       `. ${openWarnings} open warning${openWarnings === 1 ? "" : "s"}.`;
   }
-  return { summary, stats, generated_at: new Date().toISOString(), total };
+  // version is stamped so a deploy that changes the wording invalidates the
+  // cached sentence instead of serving the old one indefinitely.
+  return { summary, stats, generated_at: new Date().toISOString(), total, version: VERSION };
 }
 
 let pulseBuilding = null;
@@ -1746,8 +1748,15 @@ app.get("/api/pulse", async (_req, res) => {
     const total = db.prepare("SELECT COUNT(*) AS n FROM log_entries").get().n;
     let cached = null;
     try { cached = JSON.parse(metaGet("pulse") || "null"); } catch {}
-    const stale = !cached || (cached.total !== total &&
-      Date.now() - Date.parse(cached.generated_at) > 60000);
+    // Rebuild when the log grows, when the code that writes the wording changes,
+    // or once a day. Without the version check a quiet system served its old
+    // summary forever: a fix to the pulse's language shipped, deployed, and
+    // never appeared, because no new entries had arrived to invalidate it.
+    const age = Date.now() - Date.parse(cached?.generated_at || 0);
+    const stale = !cached
+      || cached.version !== VERSION
+      || (cached.total !== total && age > 60000)
+      || age > 86400000;
     if (!stale) return res.json(cached);
     pulseBuilding ||= buildPulse(total).then((p) => {
       metaSet("pulse", JSON.stringify(p));
