@@ -370,3 +370,31 @@ test("the feed reads a person and a name out of a JSON-string payload", () => {
   // A blob must never be mistaken for a human-readable title.
   assert.equal(ctx.displayName({ blob: '{"a":1}' }), "", "serialized values are not names");
 });
+
+// A dotted action name is a database key. It leaked into the pulse ("31
+// clio.scan.run cycles"), into KPI tile labels ("MAIN.ORGANIZATION.NEW"), into
+// chart labels and into the AI's own prose, because four surfaces each formatted
+// it themselves and none translated. phrase.js is the single translation; these
+// are the exact strings that reached a screen.
+test("action identifiers never reach a human as identifiers", async () => {
+  const { phraseAction, phraseCount, isInternal } = await import("../phrase.js");
+  const cases = {
+    "main.Organization.new": "organizations created",
+    "main.Organization.deleted": "organizations deleted",
+    "cascade-office.Orders.deleted": "orders deleted",        // already plural, not "orderses"
+    "cascade-office.Customers.modified": "customers edited",
+    "alder-street.Inventory.deleted": "inventory records deleted", // mass noun
+    "main.Company.new": "companies created",                   // y -> ies
+    "clio.scan.run": "watchdog scan ran",
+  };
+  for (const [action, want] of Object.entries(cases)) {
+    assert.equal(phraseAction(action), want, action);
+    assert.ok(!/\./.test(phraseAction(action)), `dotted name survived: ${action}`);
+  }
+  assert.equal(
+    phraseCount("alder-street.Inventory.deleted", 2, { withSystem: true, systemName: () => "Alder Street" }),
+    "2 inventory records deleted at Alder Street");
+  // Prose passes through untouched rather than being mangled.
+  assert.equal(phraseAction("someone edited a record"), "someone edited a record");
+  assert.ok(isInternal("clio") && !isInternal("main"));
+});

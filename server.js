@@ -16,6 +16,7 @@ import { appendBatch, head, verifyRange, entryHash, GENESIS } from "./chain.js";
 import { runScan, getPrefs } from "./scan.js";
 import { askLogs, aiFindings, aiAvailable, pulseText, authorRule, setModel, setAIConfig, aiConfig, currentModel, MODELS, listModels, currentKey } from "./ai.js";
 import { diffRecords } from "./diff.js";
+import { phraseAction, phraseCount } from "./phrase.js";
 import { runRules, dryRun, createRule, listRules, updateRule, ruleFirings, ruleMatches, seedDefaultRules } from "./rules.js";
 import * as demoSession from "./demo/demosession.js";
 import * as demoState from "./demo/demostate.js";
@@ -1696,23 +1697,31 @@ app.post("/api/notify-test", async (_req, res) => {
 
 async function buildPulse(total) {
   const dayAgo = new Date(Date.now() - 86400000).toISOString();
+  // Clio's own scans are not the customer's activity. Log Entries and Ask both
+  // exclude the 'clio' system already; the pulse queried log_entries directly
+  // and so reported "31 clio.scan.run cycles" as if it were business activity.
   const perSystem = db.prepare(
-    "SELECT system_id, COUNT(*) AS n FROM log_entries WHERE COALESCE(NULLIF(ts_client,''), ts_server) >= ? GROUP BY system_id ORDER BY n DESC"
+    "SELECT system_id, COUNT(*) AS n FROM log_entries WHERE COALESCE(NULLIF(ts_client,''), ts_server) >= ? AND system_id != 'clio' GROUP BY system_id ORDER BY n DESC"
   ).all(dayAgo);
   const topActions = db.prepare(
-    "SELECT action, COUNT(*) AS n FROM log_entries WHERE ts_server >= ? GROUP BY action ORDER BY n DESC LIMIT 8"
+    "SELECT action, COUNT(*) AS n FROM log_entries WHERE ts_server >= ? AND system_id != 'clio' GROUP BY action ORDER BY n DESC LIMIT 8"
   ).all(dayAgo);
   const trouble = db.prepare(
-    `SELECT action, COUNT(*) AS n FROM log_entries WHERE ts_server >= ?
+    `SELECT action, COUNT(*) AS n FROM log_entries WHERE ts_server >= ? AND system_id != 'clio'
      AND (action LIKE '%error%' OR action LIKE '%fail%' OR action LIKE '%denied%' OR action LIKE '%.deleted')
      GROUP BY action ORDER BY n DESC LIMIT 5`
   ).all(dayAgo);
   const openWarnings = db.prepare("SELECT COUNT(*) AS n FROM warnings WHERE status = 'open'").get().n;
+  // Hand the model ENGLISH, not database keys. It was given "main.Organization.new
+  // (3)" and told to cite only what it was given, so it dutifully printed the
+  // identifier. The field name "trouble_shaped" leaked into prose the same way.
+  const reg = systemsIndex();
+  const sysName = (sid) => reg[sid]?.label || sid;
   const stats = {
     events_last_24h: perSystem.reduce((s, r) => s + r.n, 0),
-    systems_active_24h: perSystem.map((r) => `${r.system_id} (${r.n})`),
-    top_actions: topActions.map((r) => `${r.action} (${r.n})`),
-    trouble_shaped: trouble.map((r) => `${r.action} (${r.n})`),
+    busiest_systems: perSystem.map((r) => `${sysName(r.system_id)}: ${r.n} events`),
+    what_happened: topActions.map((r) => phraseCount(r.action, r.n, { withSystem: true, systemName: sysName })),
+    worth_a_look: trouble.map((r) => phraseCount(r.action, r.n, { withSystem: true, systemName: sysName })),
     open_warnings: openWarnings,
   };
   let summary = "";
@@ -1722,9 +1731,10 @@ async function buildPulse(total) {
     try { summary = await pulseText(stats); } catch {}
   }
   if (!summary) {
+    // "trouble-shaped" was a field name that became a sentence. Nobody says it.
     summary = `${stats.events_last_24h} events in the last 24 hours across ` +
       `${perSystem.length} system${perSystem.length === 1 ? "" : "s"}` +
-      (trouble.length ? `; trouble-shaped: ${stats.trouble_shaped.join(", ")}` : "; nothing trouble-shaped") +
+      (trouble.length ? `. Worth a look: ${stats.worth_a_look.join(", ")}` : ". Nothing looks like trouble") +
       `. ${openWarnings} open warning${openWarnings === 1 ? "" : "s"}.`;
   }
   return { summary, stats, generated_at: new Date().toISOString(), total };

@@ -1,6 +1,6 @@
 {
   "name": "clio",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "description": "Inviolate logs that live outside FileMaker. Append-only, hash-chained, tamper-evident.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

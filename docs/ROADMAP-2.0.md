@@ -75,6 +75,45 @@ record's history, who ran which Ask query, who read or exported what, when.
 Auditing access to the audit log. (Reads, not just writes.) Same tamper-evident
 chain, its own system.
 
+## Meet the log table you already have
+Most solutions already keep a Log table, often years deep. Clio should adopt it
+rather than ask anyone to abandon it.
+
+- **Pull:** read an existing FileMaker log table and import its history into the
+  chain, so day one starts with the past already in it. Field mapping is the
+  work: the developer says which column is the timestamp, the account, the
+  table, the record id, the change.
+- **Push:** write Clio's entries back into that table, for solutions with
+  reports, layouts and scripts already built on it. Nobody rewrites their
+  reporting to adopt a log server.
+- **Two-way:** keep both in step, with Clio as the tamper-evident side and the
+  in-file table as the convenient side.
+
+The import path is specified in `filemaker/Clio Import Log Table.md`; the push
+direction and the ongoing sync are new.
+
+## Track what your solution actually uses
+A tag a developer drops into a script, a layout, or a field's auto-enter, and
+Clio starts counting. One line to add, nothing else to configure.
+
+- **Every script used**, how often, by whom, how long it ran.
+- **Every layout visited**, how often, by whom.
+- **Every field edited**, how often, by whom.
+
+## The report nobody can produce today: what is NOT used
+The inverse of the above, and the more valuable half. Given the file's full
+object list (from the DDR or a structural export) minus what the log has ever
+seen:
+
+- Scripts never called
+- Layouts never opened
+- Fields never edited, and fields never even displayed
+- Value lists, table occurrences and relationships nothing touches
+
+That is a dead-code report for a FileMaker solution, measured from real use
+rather than guessed at by reading the file. It is what makes a twenty-year-old
+system safe to cut down, and no existing tool answers it.
+
 ## Other
 - Line / time-series charts in Ask (activity over time), and multi-series
   palettes, when a real need appears (0.x stays single-hue bars + tiles).
