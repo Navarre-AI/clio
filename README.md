@@ -169,5 +169,4 @@ Server setup notes: `SETUP.md`. Security model and its honest limits:
   never computes a number).
 - `docs/WATCHDOG.md`: how the detectors work and what is deliberately not
   being built.
-- License: attribution required, no resale without permission. See `LICENSE`.
-  © 2026 Matt Navarre, [navarre.ai](https://navarre.ai)
+- License: MIT. See `LICENSE`. © 2026 Matt Navarre, [navarre.ai](https://navarre.ai)

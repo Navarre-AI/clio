@@ -3,6 +3,11 @@
 The human-readable changelog. Newest first. The commit log has the detail;
 this is the story.
 
+## 2026-09-13 — MIT
+
+- **Clio is MIT licensed.** The custom Clio License (attribution, no resale)
+  is withdrawn. Use it, change it, ship it, sell it; keep the copyright notice.
+
 ## August 2026
 
 - **Try It demo.** A read-only public demo (`DEMO_MODE=1`) built on a

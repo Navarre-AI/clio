@@ -156,5 +156,4 @@ plus joins in `queryLogs`. Label every link as inferred, because it is.
 - **Read `SECURITY.md` before touching auth.** It documents the threat model
   and, more usefully, its honest limits.
 
-License: see `LICENSE`. Attribution required, no resale without permission.
-© 2026 Matt Navarre (www.navarre.ai)
+License: MIT, see `LICENSE`. © 2026 Matt Navarre (www.navarre.ai)
